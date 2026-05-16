@@ -354,13 +354,14 @@ class ADVAPAFO_Shortcodes {
 		}
 
 		$wrapper_class               = 'advapafo-shortcode-login-wrap' . ( $extra_class ? ' ' . $extra_class : '' );
+		$button_style_class          = $this->get_button_style_class();
 		self::$login_button_rendered = true;
 
 		ob_start();
 		?>
 		<div class="<?php echo esc_attr( $wrapper_class ); ?>">
 			<button type="button"
-					class="advapafo-passkey-btn advapafo-sc-btn advapafo-signin-passkey"
+					class="advapafo-passkey-btn advapafo-sc-btn advapafo-signin-passkey <?php echo esc_attr( $button_style_class ); ?>"
 					data-advapafo-passkey-login-btn="1"
 					aria-label="<?php esc_attr_e( 'Sign in with a passkey (Face ID, Touch ID, or security key)', 'advanced-passkey-login' ); ?>"
 					<?php
@@ -381,6 +382,15 @@ class ADVAPAFO_Shortcodes {
 		</div>
 		<?php
 		return ob_get_clean();
+	}
+
+	private function get_button_style_class(): string {
+		$style = sanitize_key( (string) get_option( 'advapafo_button_style', 'black' ) );
+		if ( 'light_grey' === $style ) {
+			return 'advapafo-passkey-btn--light-grey';
+		}
+
+		return 'advapafo-passkey-btn--black';
 	}
 
 	/**

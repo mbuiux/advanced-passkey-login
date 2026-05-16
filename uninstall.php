@@ -38,6 +38,7 @@ function advapafo_uninstall_cleanup_current_blog(): void {
 		'advapafo_eligible_roles',
 		'advapafo_max_passkeys_per_user',
 		'advapafo_user_verification',
+		'advapafo_button_style',
 		'advapafo_rp_id',
 		'advapafo_rate_limit_window',
 		'advapafo_rate_limit_max_failures',

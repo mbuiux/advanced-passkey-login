@@ -384,6 +384,16 @@ class ADVAPAFO_Settings {
 
 		register_setting(
 			$this->option_group,
+			'advapafo_button_style',
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => array( $this, 'sanitize_button_style' ),
+				'default'           => 'black',
+			)
+		);
+
+		register_setting(
+			$this->option_group,
 			'advapafo_rp_name',
 			array(
 				'type'              => 'string',
@@ -718,6 +728,7 @@ class ADVAPAFO_Settings {
 
 		if ( 'settings' === $active_tab ) {
 			$show_separator             = (bool) get_option( 'advapafo_show_separator', true );
+			$button_style              = get_option( 'advapafo_button_style', 'black' );
 			$rp_name                    = get_option( 'advapafo_rp_name', '' );
 			$rp_id                      = get_option( 'advapafo_rp_id', '' );
 			$login_challenge_ttl        = absint( get_option( 'advapafo_login_challenge_ttl', 300 ) );
@@ -727,6 +738,7 @@ class ADVAPAFO_Settings {
 			$lockout                    = absint( get_option( 'advapafo_rate_limit_lockout', 900 ) );
 
 			echo '<input type="hidden" name="advapafo_show_separator" value="' . esc_attr( $show_separator ? '1' : '0' ) . '" />';
+			echo '<input type="hidden" name="advapafo_button_style" value="' . esc_attr( (string) $button_style ) . '" />';
 			echo '<input type="hidden" name="advapafo_rp_name" value="' . esc_attr( (string) $rp_name ) . '" />';
 			echo '<input type="hidden" name="advapafo_rp_id" value="' . esc_attr( (string) $rp_id ) . '" />';
 			echo '<input type="hidden" name="advapafo_login_challenge_ttl" value="' . esc_attr( (string) $login_challenge_ttl ) . '" />';
@@ -1862,6 +1874,7 @@ class ADVAPAFO_Settings {
 	 */
 	private function render_advanced_tab() {
 		$show_separator             = (bool) get_option( 'advapafo_show_separator', true );
+		$button_style              = get_option( 'advapafo_button_style', 'black' );
 		$rp_name                    = get_option( 'advapafo_rp_name', '' );
 		$rp_id                      = get_option( 'advapafo_rp_id', '' );
 		$login_challenge_ttl        = absint( get_option( 'advapafo_login_challenge_ttl', 300 ) );
@@ -1887,6 +1900,16 @@ class ADVAPAFO_Settings {
 				<span class="advapafo-switch__track"><span class="advapafo-switch__thumb"></span></span>
 				<span class="screen-reader-text"><?php esc_html_e( 'Show login OR separator', 'advanced-passkey-login' ); ?></span>
 			</label>
+		</div>
+
+		<div class="advapafo-card">
+			<div class="advapafo-field">
+				<label for="advapafo_button_style"><?php esc_html_e( 'Passkey button style', 'advanced-passkey-login' ); ?></label>
+				<select id="advapafo_button_style" name="advapafo_button_style">
+					<option value="black" <?php selected( $button_style, 'black' ); ?>><?php esc_html_e( 'Default black', 'advanced-passkey-login' ); ?></option>
+					<option value="light_grey" <?php selected( $button_style, 'light_grey' ); ?>><?php esc_html_e( 'Light grey', 'advanced-passkey-login' ); ?></option>
+				</select>
+			</div>
 		</div>
 
 		<div class="advapafo-card advapafo-grid-2">
@@ -2155,11 +2178,16 @@ class ADVAPAFO_Settings {
 	 */
 	public function sanitize_roles( $roles ) {
 		if ( ! is_array( $roles ) ) {
-			return array();
+			return array( 'administrator' );
 		}
 
 		$valid_roles = array_keys( wp_roles()->roles );
-		return array_values( array_intersect( array_map( 'sanitize_key', $roles ), $valid_roles ) );
+		$sanitized   = array_values( array_intersect( array_map( 'sanitize_key', $roles ), $valid_roles ) );
+		if ( empty( $sanitized ) ) {
+			return array( 'administrator' );
+		}
+
+		return $sanitized;
 	}
 
 	/**
@@ -2181,6 +2209,12 @@ class ADVAPAFO_Settings {
 	public function sanitize_user_verification( $value ) {
 		$allowed = array( 'required', 'preferred', 'discouraged' );
 		return in_array( $value, $allowed, true ) ? $value : 'required';
+	}
+
+	public function sanitize_button_style( $value ) {
+		$allowed = array( 'black', 'light_grey' );
+		$value   = sanitize_key( (string) $value );
+		return in_array( $value, $allowed, true ) ? $value : 'black';
 	}
 
 	/**

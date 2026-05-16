@@ -1309,6 +1309,29 @@
     box-shadow: 0 0 0 2px rgba(76, 159, 254, 0.45), 0 6px 14px rgba(17, 24, 32, 0.24);
 }
 
+.advapafo-shortcode-login-wrap .advapafo-passkey-btn.advapafo-passkey-btn--light-grey {
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    border-color: #c7d0da !important;
+    background: #eef1f4 !important;
+    color: #1f2937 !important;
+    text-shadow: none !important;
+    box-shadow: 0 2px 8px rgba(71, 85, 105, 0.18);
+}
+
+.advapafo-shortcode-login-wrap .advapafo-passkey-btn.advapafo-passkey-btn--light-grey:hover,
+.advapafo-shortcode-login-wrap .advapafo-passkey-btn.advapafo-passkey-btn--light-grey:focus {
+    border-color: #9aa4b2 !important;
+    background: #dde3ea !important;
+    color: #111827 !important;
+    box-shadow: 0 6px 14px rgba(71, 85, 105, 0.2);
+}
+
+.advapafo-shortcode-login-wrap .advapafo-passkey-btn.advapafo-passkey-btn--light-grey .advapafo-passkey-icon {
+    color: #1f2937;
+}
+
 .advapafo-shortcode-login-wrap .advapafo-passkey-icon {
     display: inline-flex;
     align-items: center;
@@ -1512,6 +1535,29 @@ body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn:focus {
 body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn:focus {
     outline: none;
     box-shadow: 0 0 0 2px rgba(76, 159, 254, 0.45), 0 6px 14px rgba(17, 24, 32, 0.24);
+}
+
+body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn.advapafo-passkey-btn--light-grey {
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    border-color: #c7d0da !important;
+    background: #eef1f4 !important;
+    color: #1f2937 !important;
+    text-shadow: none !important;
+    box-shadow: 0 2px 8px rgba(71, 85, 105, 0.18);
+}
+
+body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn.advapafo-passkey-btn--light-grey:hover,
+body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn.advapafo-passkey-btn--light-grey:focus {
+    border-color: #9aa4b2 !important;
+    background: #dde3ea !important;
+    color: #111827 !important;
+    box-shadow: 0 6px 14px rgba(71, 85, 105, 0.2);
+}
+
+body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn.advapafo-passkey-btn--light-grey .advapafo-passkey-icon {
+    color: #1f2937;
 }
 
 body.login .advapafo-login-passkey-wrap .advapafo-passkey-icon {

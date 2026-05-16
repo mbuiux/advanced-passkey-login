@@ -35,7 +35,8 @@ class ADVAPAFO_Login_Form {
 			return;
 		}
 
-		$show_sep = (int) get_option( 'advapafo_show_separator', 1 ) === 1;
+		$show_sep      = (int) get_option( 'advapafo_show_separator', 1 ) === 1;
+		$style_classes = $this->get_button_style_class();
 
 		?>
 
@@ -49,7 +50,7 @@ class ADVAPAFO_Login_Form {
 			<div class="<?php echo esc_attr( 'advapafo-login-passkey-wrap' . ( $show_sep ? '' : ' advapafo-no-separator' ) ); ?>">
 				<button type="button"
 						id="advapafo-signin-passkey"
-						class="button button-large advapafo-passkey-btn"
+						class="button button-large advapafo-passkey-btn <?php echo esc_attr( $style_classes ); ?>"
 						aria-label="<?php esc_attr_e( 'Sign in with a passkey (Face ID, Touch ID, or security key)', 'advanced-passkey-login' ); ?>">
 					<span class="advapafo-passkey-icon" aria-hidden="true">
 						<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -67,6 +68,15 @@ class ADVAPAFO_Login_Form {
 			</div>
 		</div>
 		<?php
+	}
+
+	private function get_button_style_class(): string {
+		$style = sanitize_key( (string) get_option( 'advapafo_button_style', 'black' ) );
+		if ( 'light_grey' === $style ) {
+			return 'advapafo-passkey-btn--light-grey';
+		}
+
+		return 'advapafo-passkey-btn--black';
 	}
 
 }
