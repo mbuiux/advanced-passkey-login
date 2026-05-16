@@ -1451,7 +1451,7 @@ body.login #advapafo-login-passkey-block {
 
 body.login .advapafo-login-separator {
     width: 100%;
-    margin: 14px 0 12px;
+    margin: 0 0 12px 0;
     display: flex;
     align-items: center;
     justify-content: center;
