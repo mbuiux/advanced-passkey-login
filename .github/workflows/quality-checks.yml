@@ -126,7 +126,7 @@ jobs:
 
           wp plugin check advanced-passkey-login \
             --exclude-directories=dist,.github \
-            --exclude-files=.gitignore,.DS_Store \
+            --exclude-files=.gitignore,.DS_Store,AGENTS.md \
             --format=json \
             --allow-root > /tmp/plugin-check-results.raw
 
