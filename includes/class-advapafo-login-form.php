@@ -60,6 +60,9 @@ class ADVAPAFO_Login_Form {
 						</svg>
 					</span>
 					<?php esc_html_e( 'Sign in with Passkey', 'advanced-passkey-login' ); ?>
+					<span class="advapafo-passkey-last-used-pill" aria-hidden="true" hidden>
+						<?php esc_html_e( 'Last used', 'advanced-passkey-login' ); ?>
+					</span>
 				</button>
 				<p id="advapafo-passkey-login-message"
 					class="advapafo-login-message advapafo-is-hidden"

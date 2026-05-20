@@ -2,6 +2,9 @@
 (function () {
     'use strict';
 
+    var LAST_USED_STORAGE_KEY = 'advapafo_passkey_last_used_at';
+    var LAST_USED_FRESHNESS_SECONDS = 90 * 24 * 60 * 60;
+
     // ── Base64url helpers ───────────────────────────────────────────────────
 
     function b64urlToBuffer(input) {
@@ -195,12 +198,50 @@
         return value;
     }
 
+    function getLastUsedPill(btn) {
+        return btn ? btn.querySelector('.advapafo-passkey-last-used-pill') : null;
+    }
+
+    function setLastUsedPill(btn, shouldShow, label) {
+        var pill = getLastUsedPill(btn);
+        if (!pill) return;
+
+        if (label) {
+            pill.textContent = label;
+        }
+
+        pill.hidden = !shouldShow;
+    }
+
     function toFriendlyErrorMessage(err) {
         var msg = (err && err.message) ? String(err.message) : '';
         if (msg && /did not match the expected pattern/i.test(msg)) {
             return 'Your passkey request data was invalid. Please refresh this page and try again.';
         }
         return msg || ADVAPAFOLogin.messages.genericError;
+    }
+
+    function markLocalLastUsedNow() {
+        try {
+            window.localStorage.setItem(LAST_USED_STORAGE_KEY, String(Math.floor(Date.now() / 1000)));
+        } catch (e) {
+            // Ignore storage failures (private mode/restrictions).
+        }
+    }
+
+    function hasRecentLocalLastUsed() {
+        try {
+            var raw = window.localStorage.getItem(LAST_USED_STORAGE_KEY);
+            if (!raw) return false;
+
+            var ts = parseInt(raw, 10);
+            if (!Number.isFinite(ts) || ts <= 0) return false;
+
+            var now = Math.floor(Date.now() / 1000);
+            return (now - ts) <= LAST_USED_FRESHNESS_SECONDS;
+        } catch (e) {
+            return false;
+        }
     }
 
     // ── AJAX ────────────────────────────────────────────────────────────────
@@ -226,6 +267,14 @@
         }
 
         return payload;
+    }
+
+    async function lookupLastUsedHint(identifier) {
+        var data = new FormData();
+        data.append('action', 'advapafo_get_last_used_hint');
+        data.append('nonce', ADVAPAFOLogin.nonce);
+        data.append('login', identifier);
+        return postForm(data);
     }
 
     // ── Sign-in flow ─────────────────────────────────────────────────────────
@@ -273,6 +322,8 @@
             throw new Error((finishResp && finishResp.data && finishResp.data.message) || ADVAPAFOLogin.messages.genericError);
         }
 
+        markLocalLastUsedNow();
+
         var redirectUrl = finishResp.data.redirect;
         try {
             var parsed = new URL(redirectUrl, window.location.origin);
@@ -292,6 +343,9 @@
 
         var buttons = Array.prototype.slice.call(document.querySelectorAll('#advapafo-signin-passkey, [data-advapafo-passkey-login-btn="1"]'));
         if (!buttons.length) return;
+        var loginNode = document.getElementById('user_login');
+        var lastLookupRequestId = 0;
+        var lookupTimer = 0;
 
         // Graceful degradation for unsupported browsers
         if (!window.PublicKeyCredential || !navigator.credentials || !navigator.credentials.get) {
@@ -301,6 +355,7 @@
                 btn.setAttribute('aria-disabled', 'true');
                 btn.title = ADVAPAFOLogin.messages.notSupported;
                 setMessage(btn, ADVAPAFOLogin.messages.notSupported);
+                setLastUsedPill(btn, false, '');
             });
             return;
         }
@@ -309,6 +364,62 @@
             btn.classList.remove('advapafo-btn-disabled');
             btn.removeAttribute('aria-disabled');
         });
+
+        function updateLastUsedPill() {
+            var identifier = getLoginIdentifier();
+            var fallbackLabel = 'Last used';
+
+            if (buttons.length) {
+                var initialPill = getLastUsedPill(buttons[0]);
+                if (initialPill && initialPill.textContent && initialPill.textContent.trim()) {
+                    fallbackLabel = initialPill.textContent.trim();
+                }
+            }
+
+            if (!identifier) {
+                buttons.forEach(function (btn) {
+                    setLastUsedPill(btn, hasRecentLocalLastUsed(), fallbackLabel);
+                });
+                return;
+            }
+
+            var requestId = ++lastLookupRequestId;
+            lookupLastUsedHint(identifier)
+                .then(function (resp) {
+                    if (requestId !== lastLookupRequestId) return;
+
+                    var data = (resp && resp.success && resp.data) ? resp.data : null;
+                    var shouldShow = !!(data && data.showPill);
+                    var label = (data && typeof data.label === 'string' && data.label.trim()) ? data.label.trim() : '';
+
+                    buttons.forEach(function (btn) {
+                        setLastUsedPill(btn, shouldShow, label);
+                    });
+                })
+                .catch(function () {
+                    if (requestId !== lastLookupRequestId) return;
+                    buttons.forEach(function (btn) {
+                        setLastUsedPill(btn, false, '');
+                    });
+                });
+        }
+
+        function queueLastUsedLookup() {
+            if (lookupTimer) {
+                window.clearTimeout(lookupTimer);
+            }
+            lookupTimer = window.setTimeout(updateLastUsedPill, 220);
+        }
+
+        if (loginNode) {
+            loginNode.addEventListener('input', queueLastUsedLookup);
+            loginNode.addEventListener('change', queueLastUsedLookup);
+            loginNode.addEventListener('blur', queueLastUsedLookup);
+        }
+
+        updateLastUsedPill();
+        window.setTimeout(updateLastUsedPill, 400);
+        window.setTimeout(updateLastUsedPill, 1400);
 
         // Optional: auto-trigger discoverable credential prompt on page load
         // (usernameless passkey sign-in — the credential chooser appears immediately).

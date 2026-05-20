@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 define( 'ADVAPAFO_VERSION', '1.1.5' );
 define( 'ADVAPAFO_PLUGIN_FILE', __FILE__ );
 define( 'ADVAPAFO_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
-define( 'ADVAPAFO_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+define( 'ADVAPAFO_PLUGIN_URL', trailingslashit( plugins_url( 'advanced-passkey-login' ) ) );
 
 // Allow env-based constant injection (same pattern used in planning-center-sso).
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.VariableConstantNameFound -- dynamic constant names are constrained to ADVAPAFO_* entries in this allowlist.

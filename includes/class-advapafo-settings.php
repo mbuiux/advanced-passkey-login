@@ -178,13 +178,13 @@ class ADVAPAFO_Settings {
 		 * copy/paste installs and older generated bundles.
 		 */
 		if ( file_exists( plugin_dir_path( __DIR__ ) . 'admin/css/advapafo-admin.css' ) ) {
-			$css_url = plugin_dir_url( __DIR__ ) . 'admin/css/advapafo-admin.css';
+			$css_url = ADVAPAFO_PLUGIN_URL . 'admin/css/advapafo-admin.css';
 		} elseif ( file_exists( __DIR__ . '/advapafo-admin.css' ) ) {
-			$css_url = plugin_dir_url( __FILE__ ) . 'advapafo-admin.css';
+			$css_url = ADVAPAFO_PLUGIN_URL . 'includes/advapafo-admin.css';
 		} elseif ( file_exists( plugin_dir_path( __DIR__ ) . 'assets/css/advapafo-admin.css' ) ) {
-			$css_url = plugin_dir_url( __DIR__ ) . 'assets/css/advapafo-admin.css';
+			$css_url = ADVAPAFO_PLUGIN_URL . 'assets/css/advapafo-admin.css';
 		} elseif ( file_exists( plugin_dir_path( __DIR__ ) . 'advapafo-admin.css' ) ) {
-			$css_url = plugin_dir_url( __DIR__ ) . 'advapafo-admin.css';
+			$css_url = ADVAPAFO_PLUGIN_URL . 'advapafo-admin.css';
 		}
 
 		if ( $css_url ) {
@@ -200,7 +200,7 @@ class ADVAPAFO_Settings {
 		if ( file_exists( $dashboard_css ) ) {
 			wp_enqueue_style(
 				'advapafo-dashboard',
-				plugin_dir_url( __DIR__ ) . 'admin/css/advapafo-dashboard.css',
+				ADVAPAFO_PLUGIN_URL . 'admin/css/advapafo-dashboard.css',
 				array( 'advapafo-admin' ),
 				$version
 			);
@@ -211,7 +211,7 @@ class ADVAPAFO_Settings {
 		if ( file_exists( $apexcharts_js ) ) {
 			wp_enqueue_script(
 				'advapafo-apexcharts',
-				plugin_dir_url( __DIR__ ) . 'admin/vendor/apexcharts/apexcharts.min.js',
+				ADVAPAFO_PLUGIN_URL . 'admin/vendor/apexcharts/apexcharts.min.js',
 				array(),
 				'3.49.1',
 				true
@@ -230,7 +230,7 @@ class ADVAPAFO_Settings {
 
 			wp_enqueue_script(
 				'advapafo-dashboard',
-				plugin_dir_url( __DIR__ ) . 'admin/js/advapafo-dashboard.js',
+				ADVAPAFO_PLUGIN_URL . 'admin/js/advapafo-dashboard.js',
 				$dashboard_deps,
 				$version,
 				true
@@ -728,7 +728,7 @@ class ADVAPAFO_Settings {
 
 		if ( 'settings' === $active_tab ) {
 			$show_separator             = (bool) get_option( 'advapafo_show_separator', true );
-			$button_style              = get_option( 'advapafo_button_style', 'black' );
+			$button_style               = get_option( 'advapafo_button_style', 'black' );
 			$rp_name                    = get_option( 'advapafo_rp_name', '' );
 			$rp_id                      = get_option( 'advapafo_rp_id', '' );
 			$login_challenge_ttl        = absint( get_option( 'advapafo_login_challenge_ttl', 300 ) );
@@ -931,8 +931,9 @@ class ADVAPAFO_Settings {
 		$authenticator_rows = array();
 		foreach ( $authenticator_totals as $provider => $total ) {
 			$authenticator_rows[] = array(
-				'provider' => (string) $provider,
-				'total'    => (int) $total,
+				'provider'     => (string) $provider,
+				'provider_key' => $this->normalize_authenticator_provider_key( (string) $provider ),
+				'total'        => (int) $total,
 			);
 			if ( count( $authenticator_rows ) >= 8 ) {
 				break;
@@ -1086,7 +1087,7 @@ class ADVAPAFO_Settings {
 								<?php foreach ( $authenticator_rows as $row ) : ?>
 									<li>
 										<div>
-											<?php echo wp_kses_post( $this->render_authenticator_provider_badge( (string) $row['provider'] ) ); ?>
+											<?php echo $this->render_authenticator_provider_badge( (string) $row['provider'], array( 'provider_key' => (string) ( $row['provider_key'] ?? '' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- output is escaped/sanitized in renderer. ?>
 											<span class="wpkpro-dashboard-auth-total"><?php echo esc_html( number_format_i18n( (int) $row['total'] ) ); ?></span>
 										</div>
 									</li>
@@ -1147,18 +1148,24 @@ class ADVAPAFO_Settings {
 											$method_key = 'security';
 										}
 
-										$authenticator = isset( $data['authenticator'] ) ? (string) $data['authenticator'] : '';
-										if ( '' === $authenticator && isset( $data['credential_hash'] ) ) {
-											$authenticator = $this->lookup_credential_label_for_hash( (string) $data['credential_hash'] );
-										}
-										if ( '' === $authenticator && isset( $data['authenticator_label'] ) ) {
-											$authenticator = $this->resolve_authenticator_provider_for_reporting( (string) $data['authenticator_label'] );
-										}
-										if ( in_array( $method_key, array( 'password', 'security' ), true ) ) {
-											$authenticator = '—';
-										}
-										if ( '' === $authenticator ) {
-											$authenticator = __( 'Unknown Authenticator', 'advanced-passkey-login' );
+										$authenticator     = '—';
+										$authenticator_key = 'unknown';
+										if ( ! in_array( $method_key, array( 'password', 'security' ), true ) ) {
+											$raw_authenticator = isset( $data['authenticator'] ) ? (string) $data['authenticator'] : '';
+											$raw_label         = '';
+											if ( '' === $raw_authenticator && isset( $data['credential_hash'] ) ) {
+												$raw_authenticator = $this->lookup_credential_label_for_hash( (string) $data['credential_hash'] );
+											}
+											if ( isset( $data['authenticator_label'] ) ) {
+												$raw_label = (string) $data['authenticator_label'];
+											}
+
+											$meta              = $this->resolve_authenticator_metadata_for_reporting( $raw_authenticator, $raw_label );
+											$authenticator     = (string) ( $meta['label'] ?? '' );
+											$authenticator_key = (string) ( $meta['key'] ?? 'unknown' );
+											if ( '' === $authenticator ) {
+												$authenticator = __( 'Unknown Authenticator', 'advanced-passkey-login' );
+											}
 										}
 
 										$user_label = isset( $data['user_login'] ) ? (string) $data['user_login'] : '';
@@ -1188,7 +1195,7 @@ class ADVAPAFO_Settings {
 													<?php if ( '—' === $authenticator ) : ?>
 														&mdash;
 													<?php else : ?>
-														<?php echo wp_kses_post( $this->render_authenticator_provider_badge( $authenticator ) ); ?>
+														<?php echo $this->render_authenticator_provider_badge( $authenticator, array( 'provider_key' => $authenticator_key ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- output is escaped/sanitized in renderer. ?>
 													<?php endif; ?>
 												</span>
 												<span class="wpkpro-dashboard-activity-time"><?php echo esc_html( $timestamp_display ); ?><?php echo '' !== $timestamp_relative ? esc_html( ' | ' . $timestamp_relative ) : ''; ?></span>
@@ -1251,15 +1258,32 @@ class ADVAPAFO_Settings {
 		global $wpdb;
 		$candidates = array(
 			$wpdb->prefix . 'advapafo_credentials',
+			$wpdb->prefix . 'wpk_credentials',
 		);
 
+		$fallback = '';
+
 		foreach ( $candidates as $candidate ) {
-			if ( $this->table_exists( $candidate ) ) {
+			if ( ! $this->table_exists( $candidate ) ) {
+				continue;
+			}
+
+			if ( '' === $fallback ) {
+				$fallback = $candidate;
+			}
+
+			$table_sql = $this->quote_table_name( $candidate );
+			if ( '' === $table_sql ) {
+				continue;
+			}
+
+			$active_count = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . $table_sql . ' WHERE revoked_at IS NULL' ); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
+			if ( $active_count > 0 ) {
 				return $candidate;
 			}
 		}
 
-		return '';
+		return $fallback;
 	}
 
 	/**
@@ -1665,45 +1689,81 @@ class ADVAPAFO_Settings {
 	 * @return string
 	 */
 	private function resolve_authenticator_provider_for_reporting( string $label = '' ): string {
-		$provider = 'Unknown Authenticator';
+		$meta = $this->resolve_authenticator_metadata_for_reporting( '', $label );
+		return (string) ( $meta['label'] ?? 'Unknown Authenticator' );
+	}
 
-		$label_lc = strtolower( trim( $label ) );
-		if ( strpos( $label_lc, 'icloud' ) !== false || strpos( $label_lc, 'apple' ) !== false ) {
-			$provider = 'iCloud Keychain';
-		} elseif ( strpos( $label_lc, 'bitwarden' ) !== false ) {
-			$provider = 'Bitwarden';
-		} elseif ( strpos( $label_lc, 'chrome' ) !== false || strpos( $label_lc, 'google' ) !== false ) {
-			$provider = 'Google Password Manager';
-		} elseif ( strpos( $label_lc, 'samsung' ) !== false ) {
-			$provider = 'Samsung Pass';
-		} elseif ( strpos( $label_lc, 'lastpass' ) !== false ) {
-			$provider = 'LastPass';
-		} elseif ( strpos( $label_lc, '1password' ) !== false ) {
-			$provider = '1Password';
-		} elseif ( strpos( $label_lc, 'dashlane' ) !== false ) {
-			$provider = 'Dashlane';
-		} elseif ( strpos( $label_lc, 'nordpass' ) !== false ) {
-			$provider = 'NordPass';
+	/**
+	 * Build normalized authenticator metadata for consistent labels and icons.
+	 *
+	 * @param string $provider Raw provider value from logs.
+	 * @param string $label Raw credential label.
+	 * @return array{label:string,key:string}
+	 */
+	private function resolve_authenticator_metadata_for_reporting( string $provider = '', string $label = '' ): array {
+		$provider = trim( $provider );
+		$label    = trim( $label );
+		$resolved = $provider;
+
+		$provider_lc = $this->normalize_provider_string_for_matching( $provider );
+		if ( strpos( $provider_lc, 'apple password' ) !== false || strpos( $provider_lc, 'apple passwords' ) !== false || strpos( $provider_lc, 'icloud keychain' ) !== false ) {
+			$resolved = 'iCloud Keychain';
 		}
 
-		$provider = (string) apply_filters( 'advapafo_authenticator_provider_label', $provider, '', $label );
-		return '' !== $provider ? $provider : 'Unknown Authenticator';
+		if ( '' === $resolved || stripos( $resolved, 'unknown' ) !== false || stripos( $resolved, 'platform authenticator' ) !== false ) {
+			$label_lc = $this->normalize_provider_string_for_matching( $label );
+			if ( strpos( $label_lc, 'icloud' ) !== false || strpos( $label_lc, 'apple' ) !== false ) {
+				$resolved = 'iCloud Keychain';
+			} elseif ( strpos( $label_lc, 'bitwarden' ) !== false ) {
+				$resolved = 'Bitwarden';
+			} elseif ( strpos( $label_lc, 'chrome' ) !== false || strpos( $label_lc, 'google' ) !== false ) {
+				$resolved = 'Google Password Manager';
+			} elseif ( strpos( $label_lc, 'samsung' ) !== false ) {
+				$resolved = 'Samsung Pass';
+			} elseif ( strpos( $label_lc, 'lastpass' ) !== false ) {
+				$resolved = 'LastPass';
+			} elseif ( strpos( $label_lc, '1password' ) !== false ) {
+				$resolved = '1Password';
+			} elseif ( strpos( $label_lc, 'dashlane' ) !== false ) {
+				$resolved = 'Dashlane';
+			} elseif ( strpos( $label_lc, 'nordpass' ) !== false ) {
+				$resolved = 'NordPass';
+			}
+		}
+
+		if ( '' === $resolved ) {
+			$resolved = 'Unknown Authenticator';
+		}
+
+		$resolved = (string) apply_filters( 'advapafo_authenticator_provider_label', $resolved, '', '' !== $label ? $label : $provider );
+		if ( '' === trim( $resolved ) ) {
+			$resolved = 'Unknown Authenticator';
+		}
+
+		return array(
+			'label' => $resolved,
+			'key'   => $this->normalize_authenticator_provider_key( $resolved ),
+		);
 	}
 
 	/**
 	 * Render a styled authenticator provider badge.
 	 *
-	 * @param string $provider Provider label.
+	 * @param string              $provider Provider label.
+	 * @param array<string,mixed> $options Optional render options.
 	 * @return string
 	 */
-	private function render_authenticator_provider_badge( string $provider ): string {
+	private function render_authenticator_provider_badge( string $provider, array $options = array() ): string {
 		$provider = trim( $provider );
 		if ( '' === $provider ) {
 			$provider = 'Unknown Authenticator';
 		}
 
-		$provider_key = $this->normalize_authenticator_provider_key( $provider );
-		$icon_markup  = $this->get_authenticator_provider_icon_svg( $provider_key );
+		$provider_key = isset( $options['provider_key'] ) ? sanitize_key( (string) $options['provider_key'] ) : '';
+		if ( '' === $provider_key ) {
+			$provider_key = $this->normalize_authenticator_provider_key( $provider );
+		}
+		$icon_markup = $this->get_authenticator_provider_icon_svg( $provider_key );
 
 		$html = '<span class="wpkpro-provider-chip wpkpro-provider-chip--' . esc_attr( $provider_key ) . '">';
 		if ( '' !== $icon_markup ) {
@@ -1712,77 +1772,8 @@ class ADVAPAFO_Settings {
 		$html .= '<span class="wpkpro-provider-label">' . esc_html( $provider ) . '</span>';
 		$html .= '</span>';
 
-		$allowed = array(
-			'span'     => array(
-				'class'       => true,
-				'aria-hidden' => true,
-			),
-			'svg'      => array(
-				'xmlns'           => true,
-				'width'           => true,
-				'height'          => true,
-				'viewBox'         => true,
-				'fill'            => true,
-				'stroke'          => true,
-				'stroke-width'    => true,
-				'stroke-linecap'  => true,
-				'stroke-linejoin' => true,
-				'aria-hidden'     => true,
-				'focusable'       => true,
-				'role'            => true,
-			),
-			'path'     => array(
-				'd'            => true,
-				'fill'         => true,
-				'stroke'       => true,
-				'stroke-width' => true,
-			),
-			'circle'   => array(
-				'cx'           => true,
-				'cy'           => true,
-				'r'            => true,
-				'fill'         => true,
-				'stroke'       => true,
-				'stroke-width' => true,
-			),
-			'rect'     => array(
-				'x'            => true,
-				'y'            => true,
-				'width'        => true,
-				'height'       => true,
-				'rx'           => true,
-				'ry'           => true,
-				'fill'         => true,
-				'stroke'       => true,
-				'stroke-width' => true,
-			),
-			'line'     => array(
-				'x1'           => true,
-				'y1'           => true,
-				'x2'           => true,
-				'y2'           => true,
-				'stroke'       => true,
-				'stroke-width' => true,
-			),
-			'polyline' => array(
-				'points'       => true,
-				'fill'         => true,
-				'stroke'       => true,
-				'stroke-width' => true,
-			),
-			'polygon'  => array(
-				'points'       => true,
-				'fill'         => true,
-				'stroke'       => true,
-				'stroke-width' => true,
-			),
-			'g'        => array(
-				'fill'   => true,
-				'stroke' => true,
-			),
-		);
-
-		return wp_kses( $html, $allowed );
+		// Markup is assembled from sanitized text/key plus static internal SVG strings.
+		return $html;
 	}
 
 	/**
@@ -1792,7 +1783,7 @@ class ADVAPAFO_Settings {
 	 * @return string
 	 */
 	private function normalize_authenticator_provider_key( string $provider ): string {
-		$provider_lc = strtolower( trim( $provider ) );
+		$provider_lc = $this->normalize_provider_string_for_matching( $provider );
 
 		if ( strpos( $provider_lc, 'bitwarden' ) !== false ) {
 			return 'bitwarden';
@@ -1826,6 +1817,19 @@ class ADVAPAFO_Settings {
 	}
 
 	/**
+	 * Normalize provider text for robust matching across log payload variants.
+	 *
+	 * @param string $provider Raw provider label.
+	 * @return string
+	 */
+	private function normalize_provider_string_for_matching( string $provider ): string {
+		$normalized = strtolower( trim( $provider ) );
+		$normalized = preg_replace( '/\s+/u', ' ', $normalized );
+
+		return is_string( $normalized ) ? trim( $normalized ) : '';
+	}
+
+	/**
 	 * Return SVG icon markup for known provider keys.
 	 *
 	 * @param string $provider_key Provider key.
@@ -1839,7 +1843,7 @@ class ADVAPAFO_Settings {
 				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M8 1.6 12.8 3v4.4c0 3-1.9 5.7-4.8 7-2.9-1.3-4.8-4-4.8-7V3L8 1.6Z" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="7" r="1.35" fill="currentColor"/><path d="M8 8.35v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
 				break;
 			case 'icloud':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M11.9 7.3a2.7 2.7 0 0 0-2.6-2.2 3 3 0 0 0-5.7.7A2.5 2.5 0 0 0 4 10.7h7.6a2.1 2.1 0 0 0 .3-3.4Z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+					$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M10.8 8.6c0-1.5 1.2-2.3 1.2-2.3-.7-1.1-1.8-1.3-2.2-1.3-.9-.1-1.8.5-2.3.5-.6 0-1.4-.5-2.2-.5-1.2 0-2.2.7-2.8 1.8-1.2 2.1-.3 5.2.9 6.9.6.8 1.2 1.7 2.1 1.7.8 0 1.2-.5 2.2-.5s1.4.5 2.2.5c.9 0 1.5-.8 2.1-1.6.6-.9.9-1.8 1-1.8-.1 0-2-.8-2-3.4Z" fill="currentColor"/><path d="M9.4 3.8c.4-.5.7-1.3.6-2-.7 0-1.5.5-1.9 1-.4.4-.7 1.2-.6 1.9.8.1 1.5-.4 1.9-.9Z" fill="currentColor"/></svg>';
 				break;
 			case '1password':
 				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><rect x="1.5" y="3" width="13" height="10" rx="5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/><path d="M8 8v2.1" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg>';
@@ -1874,7 +1878,7 @@ class ADVAPAFO_Settings {
 	 */
 	private function render_advanced_tab() {
 		$show_separator             = (bool) get_option( 'advapafo_show_separator', true );
-		$button_style              = get_option( 'advapafo_button_style', 'black' );
+		$button_style               = get_option( 'advapafo_button_style', 'black' );
 		$rp_name                    = get_option( 'advapafo_rp_name', '' );
 		$rp_id                      = get_option( 'advapafo_rp_id', '' );
 		$login_challenge_ttl        = absint( get_option( 'advapafo_login_challenge_ttl', 300 ) );
@@ -2211,6 +2215,12 @@ class ADVAPAFO_Settings {
 		return in_array( $value, $allowed, true ) ? $value : 'required';
 	}
 
+	/**
+	 * Sanitize button style setting.
+	 *
+	 * @param mixed $value Raw value.
+	 * @return string
+	 */
 	public function sanitize_button_style( $value ) {
 		$allowed = array( 'black', 'light_grey' );
 		$value   = sanitize_key( (string) $value );

@@ -61,9 +61,11 @@ class ADVAPAFO_Passkeys {
 
 	private static $instance = null;
 
-	const TABLE_CREDENTIALS    = 'advapafo_credentials';
-	const TABLE_RATE_LIMITS    = 'advapafo_rate_limits';
-	const DEFAULT_MAX_PASSKEYS = 0;
+	const TABLE_CREDENTIALS                     = 'advapafo_credentials';
+	const TABLE_RATE_LIMITS                     = 'advapafo_rate_limits';
+	const DEFAULT_MAX_PASSKEYS                  = 0;
+	const LAST_USED_PILL_DEFAULT_FRESHNESS_DAYS = 90;
+	const USER_META_LAST_PASSKEY_LOGIN          = 'advapafo_last_passkey_login_at';
 
 	// ──────────────────────────────────────────────────────────
 	// Boot
@@ -93,7 +95,7 @@ class ADVAPAFO_Passkeys {
 		if ( empty( $allowed_roles ) ) {
 			$allowed_roles = array( 'administrator' );
 		}
-		$eligible      = apply_filters( 'advapafo_is_eligible_user', null, $user );
+		$eligible = apply_filters( 'advapafo_is_eligible_user', null, $user );
 		if ( null !== $eligible ) {
 			return (bool) $eligible;
 		}
@@ -150,6 +152,11 @@ class ADVAPAFO_Passkeys {
 		add_action( 'wp_ajax_advapafo_begin_login', array( $this, 'ajax_begin_login' ) );
 		add_action( 'wp_ajax_nopriv_advapafo_finish_login', array( $this, 'ajax_finish_login' ) );
 		add_action( 'wp_ajax_advapafo_finish_login', array( $this, 'ajax_finish_login' ) );
+		add_action( 'wp_ajax_nopriv_advapafo_get_last_used_hint', array( $this, 'ajax_get_last_used_hint' ) );
+		add_action( 'wp_ajax_advapafo_get_last_used_hint', array( $this, 'ajax_get_last_used_hint' ) );
+
+		// Persist a user-level timestamp after successful passkey login.
+		add_action( 'advapafo_passkey_login_success', array( $this, 'handle_passkey_login_success' ), 10, 3 );
 	}
 
 	/**
@@ -1243,22 +1250,7 @@ class ADVAPAFO_Passkeys {
 		$cred       = null;
 		$cred_table = '';
 		foreach ( $tables as $candidate_table ) {
-			if ( $state_uid > 0 ) {
-				$candidate = $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom credential lookup for user-bound login flow.
-					$wpdb->prepare( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom credential lookup for user-bound login flow.
-						"SELECT * FROM {$candidate_table} WHERE credential_id_hash = %s AND user_id = %d AND revoked_at IS NULL LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-						$cred_hash,
-						$state_uid
-					)
-				);
-			} else {
-				$candidate = $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom credential lookup for discoverable login flow.
-					$wpdb->prepare( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom credential lookup for discoverable login flow.
-						"SELECT * FROM {$candidate_table} WHERE credential_id_hash = %s AND revoked_at IS NULL LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-						$cred_hash
-					)
-				);
-			}
+			$candidate = $this->get_credential_by_hash_from_table( $candidate_table, $cred_hash, $state_uid );
 
 			if ( $candidate ) {
 				$cred       = $candidate;
@@ -1860,23 +1852,140 @@ class ADVAPAFO_Passkeys {
 	}
 
 	/**
+	 * Record the latest successful passkey login timestamp for a user.
+	 *
+	 * @param int    $user_id WordPress user ID.
+	 * @param string $credential_hash SHA-256 hash of the credential ID.
+	 * @param string $user_agent Raw user agent string.
+	 * @return void
+	 */
+	public function handle_passkey_login_success( int $user_id, string $credential_hash = '', string $user_agent = '' ): void {
+		unset( $credential_hash, $user_agent );
+
+		if ( $user_id < 1 ) {
+			return;
+		}
+
+		update_user_meta( $user_id, self::USER_META_LAST_PASSKEY_LOGIN, (string) time() );
+	}
+
+	/**
+	 * Resolve the login-pill label with site-level override support.
+	 *
+	 * @param WP_User|null $user Resolved user (if available).
+	 * @return string
+	 */
+	private function get_last_used_pill_label( ?WP_User $user ): string {
+		$default_label = __( 'Last used', 'advanced-passkey-login' );
+		$filtered      = apply_filters( 'advapafo_last_used_pill_label', $default_label, $user );
+		$label         = is_string( $filtered ) ? sanitize_text_field( $filtered ) : '';
+
+		return '' !== $label ? $label : $default_label;
+	}
+
+	/**
+	 * Resolve freshness window days for the login-pill recency check.
+	 *
+	 * @param WP_User|null $user Resolved user (if available).
+	 * @return int
+	 */
+	private function get_last_used_pill_freshness_days( ?WP_User $user ): int {
+		$days = (int) apply_filters( 'advapafo_last_used_pill_freshness_days', self::LAST_USED_PILL_DEFAULT_FRESHNESS_DAYS, $user );
+
+		if ( $days < 0 ) {
+			$days = 0;
+		}
+
+		return min( $days, 3650 );
+	}
+
+	/**
+	 * Evaluate visibility for the login-pill hint and expose a final override filter.
+	 *
+	 * @param int          $timestamp Last passkey-login timestamp.
+	 * @param WP_User|null $user      Resolved user (if available).
+	 * @return bool
+	 */
+	private function should_show_last_used_pill( int $timestamp, ?WP_User $user ): bool {
+		$freshness_days = $this->get_last_used_pill_freshness_days( $user );
+		$cutoff         = time() - ( $freshness_days * DAY_IN_SECONDS );
+		$base_visible   = $timestamp > 0 && $timestamp >= $cutoff;
+
+		return (bool) apply_filters( 'advapafo_last_used_pill_visible', $base_visible, $timestamp, $freshness_days, $user );
+	}
+
+	/**
+	 * Return whether the entered account should show the "Last used" login hint.
+	 *
+	 * @return void
+	 */
+	public function ajax_get_last_used_hint(): void {
+		$label = $this->get_last_used_pill_label( null );
+
+		if ( ! $this->is_post_request() ) {
+			wp_send_json_success(
+				array(
+					'showPill' => false,
+					'label'    => $label,
+				)
+			);
+		}
+
+		if ( ! check_ajax_referer( 'advapafo_login', 'nonce', false ) ) {
+			wp_send_json_success(
+				array(
+					'showPill' => false,
+					'label'    => $label,
+				)
+			);
+		}
+
+		$login = isset( $_POST['login'] ) ? sanitize_text_field( wp_unslash( $_POST['login'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce is verified above.
+		$login = trim( $login );
+
+		if ( '' === $login || strlen( $login ) > 191 ) {
+			wp_send_json_success(
+				array(
+					'showPill' => false,
+					'label'    => $label,
+				)
+			);
+		}
+
+		$user = $this->resolve_user( $login );
+		if ( ! $user instanceof WP_User ) {
+			wp_send_json_success(
+				array(
+					'showPill' => false,
+					'label'    => $label,
+				)
+			);
+		}
+
+		$last_login = get_user_meta( (int) $user->ID, self::USER_META_LAST_PASSKEY_LOGIN, true );
+		$timestamp  = is_numeric( $last_login ) ? (int) $last_login : 0;
+		$label      = $this->get_last_used_pill_label( $user );
+
+		wp_send_json_success(
+			array(
+				'showPill' => $this->should_show_last_used_pill( $timestamp, $user ),
+				'label'    => $label,
+			)
+		);
+	}
+
+	/**
 	 * Get active credentials for a user.
 	 *
 	 * @param int $user_id User ID.
 	 * @return array<int, object>
 	 */
 	private function get_user_credentials( int $user_id ): array {
-		global $wpdb;
 		$results = array();
 		$seen    = array();
 
 		foreach ( $this->get_credentials_table_names_ordered() as $table ) {
-			$rows = (array) $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication requires live reads from plugin credential tables.
-				$wpdb->prepare( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-					"SELECT * FROM {$table} WHERE user_id = %d AND revoked_at IS NULL ORDER BY created_at DESC", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-					$user_id
-				)
-			);
+			$rows = $this->get_active_credentials_rows_from_table( $table, $user_id );
 
 			foreach ( $rows as $row ) {
 				$hash = isset( $row->credential_id_hash ) ? (string) $row->credential_id_hash : '';
@@ -1911,14 +2020,38 @@ class ADVAPAFO_Passkeys {
 	 * @return array<int, object>
 	 */
 	private function get_user_credentials_meta( int $user_id ): array {
-		global $wpdb;
-		$table = $wpdb->prefix . self::TABLE_CREDENTIALS;
-		return (array) $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- admin credential metadata view reads plugin-owned custom table.
-			$wpdb->prepare( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-				"SELECT id, credential_label, created_at, last_used_at FROM {$table} WHERE user_id = %d AND revoked_at IS NULL ORDER BY created_at DESC", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				$user_id
-			)
+		$results = array();
+		$seen    = array();
+
+		foreach ( $this->get_credentials_table_names_ordered() as $table ) {
+			$rows = $this->get_active_credentials_meta_rows_from_table( $table, $user_id );
+
+			foreach ( $rows as $row ) {
+				$hash = isset( $row->credential_id_hash ) ? (string) $row->credential_id_hash : '';
+				if ( '' === $hash ) {
+					$hash = md5( (string) ( $row->credential_id ?? '' ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_md5 -- fallback key for dedupe only.
+				}
+
+				if ( '' !== $hash && isset( $seen[ $hash ] ) ) {
+					continue;
+				}
+
+				if ( '' !== $hash ) {
+					$seen[ $hash ] = true;
+				}
+
+				$results[] = $row;
+			}
+		}
+
+		usort(
+			$results,
+			static function ( $a, $b ) {
+				return strcmp( (string) ( $b->created_at ?? '' ), (string) ( $a->created_at ?? '' ) );
+			}
 		);
+
+		return $results;
 	}
 
 	/**
@@ -1929,15 +2062,9 @@ class ADVAPAFO_Passkeys {
 	 * @return int
 	 */
 	private function count_user_credentials( int $user_id ): int {
-		global $wpdb;
 		$hashes = array();
 		foreach ( $this->get_credentials_table_names_ordered() as $table ) {
-			$rows = (array) $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- realtime credential count used for limit enforcement.
-				$wpdb->prepare( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-					"SELECT credential_id_hash FROM {$table} WHERE user_id = %d AND revoked_at IS NULL", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-					$user_id
-				)
-			);
+			$rows = $this->get_active_credential_hashes_from_table( $table, $user_id );
 
 			foreach ( $rows as $hash ) {
 				$normalized = (string) $hash;
@@ -1949,6 +2076,169 @@ class ADVAPAFO_Passkeys {
 		}
 
 		return count( $hashes );
+	}
+
+	/**
+	 * Fetch a single active credential row by hash from a supported table.
+	 *
+	 * @param string $table Table name.
+	 * @param string $credential_hash Credential hash.
+	 * @param int    $user_id Optional user context. Zero means discoverable lookup.
+	 * @return object|null
+	 */
+	private function get_credential_by_hash_from_table( string $table, string $credential_hash, int $user_id ): ?object {
+		global $wpdb;
+
+		$lite_table   = $wpdb->prefix . self::TABLE_CREDENTIALS;
+		$shared_table = $wpdb->prefix . 'wpk_credentials';
+
+		if ( $table !== $lite_table && $table !== $shared_table ) {
+			return null;
+		}
+
+		if ( $user_id > 0 ) {
+			if ( $table === $lite_table ) {
+				return $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication flow requires immediate credential lookup.
+					$wpdb->prepare(
+						"SELECT * FROM {$wpdb->prefix}advapafo_credentials WHERE credential_id_hash = %s AND user_id = %d AND revoked_at IS NULL LIMIT 1",
+						$credential_hash,
+						$user_id
+					)
+				);
+			}
+
+			return $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication flow requires immediate credential lookup.
+				$wpdb->prepare(
+					"SELECT * FROM {$wpdb->prefix}wpk_credentials WHERE credential_id_hash = %s AND user_id = %d AND revoked_at IS NULL LIMIT 1",
+					$credential_hash,
+					$user_id
+				)
+			);
+		}
+
+		if ( $table === $lite_table ) {
+			return $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication flow requires immediate credential lookup.
+				$wpdb->prepare(
+					"SELECT * FROM {$wpdb->prefix}advapafo_credentials WHERE credential_id_hash = %s AND revoked_at IS NULL LIMIT 1",
+					$credential_hash
+				)
+			);
+		}
+
+		return $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication flow requires immediate credential lookup.
+			$wpdb->prepare(
+				"SELECT * FROM {$wpdb->prefix}wpk_credentials WHERE credential_id_hash = %s AND revoked_at IS NULL LIMIT 1",
+				$credential_hash
+			)
+		);
+	}
+
+	/**
+	 * Fetch active credential rows for a user from a supported table.
+	 *
+	 * @param string $table Table name.
+	 * @param int    $user_id User ID.
+	 * @return array<int, object>
+	 */
+	private function get_active_credentials_rows_from_table( string $table, int $user_id ): array {
+		global $wpdb;
+
+		$lite_table   = $wpdb->prefix . self::TABLE_CREDENTIALS;
+		$shared_table = $wpdb->prefix . 'wpk_credentials';
+
+		if ( $table === $lite_table ) {
+			return (array) $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication requires live reads from plugin credential table.
+				$wpdb->prepare(
+					"SELECT * FROM {$wpdb->prefix}advapafo_credentials WHERE user_id = %d AND revoked_at IS NULL ORDER BY created_at DESC",
+					$user_id
+				)
+			);
+		}
+
+		if ( $table === $shared_table ) {
+			return (array) $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication requires live reads from plugin credential table.
+				$wpdb->prepare(
+					"SELECT * FROM {$wpdb->prefix}wpk_credentials WHERE user_id = %d AND revoked_at IS NULL ORDER BY created_at DESC",
+					$user_id
+				)
+			);
+		}
+
+		return array();
+	}
+
+	/**
+	 * Fetch active credential metadata rows for a user from a supported table.
+	 *
+	 * @param string $table Table name.
+	 * @param int    $user_id User ID.
+	 * @return array<int, object>
+	 */
+	private function get_active_credentials_meta_rows_from_table( string $table, int $user_id ): array {
+		global $wpdb;
+
+		$lite_table   = $wpdb->prefix . self::TABLE_CREDENTIALS;
+		$shared_table = $wpdb->prefix . 'wpk_credentials';
+
+		if ( $table === $lite_table ) {
+			return (array) $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- admin credential metadata view reads plugin-owned table.
+				$wpdb->prepare(
+					"SELECT id, credential_id, credential_id_hash, credential_label, created_at, last_used_at FROM {$wpdb->prefix}advapafo_credentials WHERE user_id = %d AND revoked_at IS NULL ORDER BY created_at DESC",
+					$user_id
+				)
+			);
+		}
+
+		if ( $table === $shared_table ) {
+			return (array) $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- admin credential metadata view reads plugin-owned table.
+				$wpdb->prepare(
+					"SELECT id, credential_id, credential_id_hash, credential_label, created_at, last_used_at FROM {$wpdb->prefix}wpk_credentials WHERE user_id = %d AND revoked_at IS NULL ORDER BY created_at DESC",
+					$user_id
+				)
+			);
+		}
+
+		return array();
+	}
+
+	/**
+	 * Fetch active credential hashes for a user from a supported table.
+	 *
+	 * @param string $table Table name.
+	 * @param int    $user_id User ID.
+	 * @return array<int, string>
+	 */
+	private function get_active_credential_hashes_from_table( string $table, int $user_id ): array {
+		global $wpdb;
+
+		$lite_table   = $wpdb->prefix . self::TABLE_CREDENTIALS;
+		$shared_table = $wpdb->prefix . 'wpk_credentials';
+
+		if ( $table === $lite_table ) {
+			return array_map(
+				'strval',
+				(array) $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- realtime credential count used for limit enforcement.
+					$wpdb->prepare(
+						"SELECT credential_id_hash FROM {$wpdb->prefix}advapafo_credentials WHERE user_id = %d AND revoked_at IS NULL",
+						$user_id
+					)
+				)
+			);
+		}
+
+		if ( $table === $shared_table ) {
+			return array_map(
+				'strval',
+				(array) $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- realtime credential count used for limit enforcement.
+					$wpdb->prepare(
+						"SELECT credential_id_hash FROM {$wpdb->prefix}wpk_credentials WHERE user_id = %d AND revoked_at IS NULL",
+						$user_id
+					)
+				)
+			);
+		}
+
+		return array();
 	}
 
 	/**

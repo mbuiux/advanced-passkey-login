@@ -138,6 +138,77 @@ Yes. Tables are created per-site (using `$wpdb->prefix`) and network activation 
 
 Yes — add `define( 'ADVAPAFO_RP_ID', 'example.com' );` to `wp-config.php`.
 
+== Developer Hooks: Last Used Pill ==
+
+Use these filters in a must-use plugin or theme to customize the login-form **Last used** pill behavior.
+
+= Hook list =
+
+Lite hooks:
+* `advapafo_last_used_pill_freshness_days` — default 90 days
+* `advapafo_last_used_pill_visible` — final on/off override
+* `advapafo_last_used_pill_label` — customize label text
+
+Pro hooks:
+* `advapafopro_last_used_pill_freshness_days` — default 90 days
+* `advapafopro_last_used_pill_visible` — final on/off override
+* `advapafopro_last_used_pill_label` — customize label text
+
+= Example: all six filters =
+
+```php
+<?php
+/**
+ * Example customization for Last used login pill (Lite + Pro).
+ */
+
+// Lite: show pill if passkey login is within 120 days.
+add_filter( 'advapafo_last_used_pill_freshness_days', function ( $days, $user ) {
+	unset( $user );
+	return 120;
+}, 10, 2 );
+
+// Lite: hide pill for administrator accounts.
+add_filter( 'advapafo_last_used_pill_visible', function ( $visible, $timestamp, $freshness_days, $user ) {
+	unset( $timestamp, $freshness_days );
+
+	if ( $user instanceof WP_User && in_array( 'administrator', (array) $user->roles, true ) ) {
+		return false;
+	}
+
+	return $visible;
+}, 10, 4 );
+
+// Lite: label override.
+add_filter( 'advapafo_last_used_pill_label', function ( $label, $user ) {
+	unset( $user );
+	return 'Previously used';
+}, 10, 2 );
+
+// Pro: show pill if passkey login is within 45 days.
+add_filter( 'advapafopro_last_used_pill_freshness_days', function ( $days, $user ) {
+	unset( $user );
+	return 45;
+}, 10, 2 );
+
+// Pro: force-show pill for editors when any timestamp exists.
+add_filter( 'advapafopro_last_used_pill_visible', function ( $visible, $timestamp, $freshness_days, $user ) {
+	unset( $freshness_days );
+
+	if ( $user instanceof WP_User && in_array( 'editor', (array) $user->roles, true ) && (int) $timestamp > 0 ) {
+		return true;
+	}
+
+	return $visible;
+}, 10, 4 );
+
+// Pro: label override.
+add_filter( 'advapafopro_last_used_pill_label', function ( $label, $user ) {
+	unset( $user );
+	return 'Used recently';
+}, 10, 2 );
+```
+
 == Screenshots ==
 
 1. The passkey sign-in button on the WordPress login screen

@@ -1508,6 +1508,8 @@ body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn {
     min-height: 30px;
     margin-bottom: 0;
     padding: 0 12px !important;
+    position: relative;
+    overflow: visible;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1573,10 +1575,77 @@ body.login .advapafo-login-passkey-wrap .advapafo-passkey-icon svg {
     stroke-width: 2.2;
 }
 
+body.login .advapafo-login-passkey-wrap .advapafo-passkey-last-used-pill {
+    position: absolute;
+    top: -9px;
+    right: -9px;
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 7px;
+    border-radius: 999px;
+    border: 1px solid #d8dde3;
+    background: #f5f7fa;
+    color: #1f2937;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.14);
+}
+
+body.login .advapafo-login-passkey-wrap .advapafo-passkey-last-used-pill[hidden] {
+    display: none !important;
+}
+
 body.login #advapafo-passkey-login-message {
     margin: 8px 0 0;
     font-size: 13px;
     line-height: 1.45;
+}
+
+.wpkpro-provider-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: #1f2937;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.wpkpro-provider-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 22px;
+    border-radius: 999px;
+    color: #111827;
+    background: rgba(17, 24, 39, 0.1);
+    border: 1px solid rgba(17, 24, 39, 0.2);
+}
+
+.wpkpro-provider-icon svg {
+    display: block;
+    width: 14px;
+    height: 14px;
+}
+
+.wpkpro-provider-chip--icloud .wpkpro-provider-icon,
+.wpkpro-provider-chip--apple .wpkpro-provider-icon,
+.wpkpro-provider-chip--apple-passwords .wpkpro-provider-icon {
+    color: #111827 !important;
+    background: rgba(17, 24, 39, 0.1) !important;
+    border-color: rgba(17, 24, 39, 0.2) !important;
+}
+
+.wpkpro-provider-chip--unknown .wpkpro-provider-icon {
+    color: #475569;
+    background: rgba(71, 85, 105, 0.12);
+    border-color: rgba(71, 85, 105, 0.24);
 }
 
 @media (max-width: 782px) {
