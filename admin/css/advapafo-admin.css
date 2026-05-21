@@ -511,6 +511,26 @@
     font-weight: 650;
 }
 
+.advapafo-integration-toggle-row .advapafo-switch {
+    position: relative;
+    width: 54px;
+    height: 30px;
+}
+
+.advapafo-integration-toggle-row .advapafo-switch > input[type="checkbox"] {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 54px !important;
+    height: 30px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    pointer-events: none !important;
+}
+
 .advapafo-field label,
 .advapafo-label-row label {
     display: block;

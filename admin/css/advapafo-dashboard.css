@@ -991,6 +991,41 @@
     pointer-events: none;
 }
 
+.advapafo-switch input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.advapafo-integration-toggle-row .advapafo-switch {
+    position: relative;
+    width: 54px;
+    height: 30px;
+}
+
+.advapafo-integration-toggle-row .advapafo-switch > input[type="checkbox"] {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 54px !important;
+    height: 30px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    pointer-events: none !important;
+}
+
 .wpkpro-switch__track {
     position: relative;
     display: inline-flex;
