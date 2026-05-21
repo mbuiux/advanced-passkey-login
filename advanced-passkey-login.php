@@ -11,7 +11,7 @@
  * Text Domain: advanced-passkey-login
  * Domain Path: /languages
  * Requires at least: 6.0
- * Tested up to: 6.9
+ * Tested up to: 7.0
  * Requires PHP: 8.0
  *
  * @package ADVAPAFO
