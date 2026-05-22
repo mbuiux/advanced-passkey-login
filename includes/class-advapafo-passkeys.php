@@ -239,16 +239,21 @@ class ADVAPAFO_Passkeys {
 	private static function ensure_credentials_schema_v2(): void {
 		global $wpdb;
 
-		$table = $wpdb->prefix . self::TABLE_CREDENTIALS;
-		$like  = $wpdb->esc_like( $table );
-		$row   = (string) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $like ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		if ( $table !== $row ) {
+		$table_name = $wpdb->prefix . self::TABLE_CREDENTIALS;
+		$like       = $wpdb->esc_like( $table_name );
+		$row        = (string) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $like ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		if ( $table_name !== $row ) {
 			return;
 		}
 
-		$column = $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", 'aaguid' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$table_sql = self::quote_table_name( $table_name );
+		if ( '' === $table_sql ) {
+			return;
+		}
+
+		$column = $wpdb->get_var( $wpdb->prepare( 'SHOW COLUMNS FROM ' . $table_sql . ' LIKE %s', 'aaguid' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 		if ( ! empty( $column ) ) {
-			$wpdb->query( "ALTER TABLE {$table} DROP COLUMN aaguid" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->query( 'ALTER TABLE ' . $table_sql . ' DROP COLUMN aaguid' ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 		}
 	}
 
@@ -257,9 +262,22 @@ class ADVAPAFO_Passkeys {
 	 */
 	public static function drop_tables(): void {
 		global $wpdb;
-		$wpdb->query( 'DROP TABLE IF EXISTS ' . $wpdb->prefix . self::TABLE_CREDENTIALS ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.NotPrepared
-		$wpdb->query( 'DROP TABLE IF EXISTS ' . $wpdb->prefix . self::TABLE_RATE_LIMITS );  // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.NotPrepared
-		$wpdb->query( 'DROP TABLE IF EXISTS ' . $wpdb->prefix . 'advapafo_logs' );               // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.NotPrepared
+
+		$credentials_table = self::quote_table_name( $wpdb->prefix . self::TABLE_CREDENTIALS );
+		$rate_limits_table = self::quote_table_name( $wpdb->prefix . self::TABLE_RATE_LIMITS );
+		$logs_table        = self::quote_table_name( $wpdb->prefix . 'advapafo_logs' );
+
+		if ( '' !== $credentials_table ) {
+			$wpdb->query( 'DROP TABLE IF EXISTS ' . $credentials_table ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
+		}
+
+		if ( '' !== $rate_limits_table ) {
+			$wpdb->query( 'DROP TABLE IF EXISTS ' . $rate_limits_table ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
+		}
+
+		if ( '' !== $logs_table ) {
+			$wpdb->query( 'DROP TABLE IF EXISTS ' . $logs_table ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
+		}
 	}
 
 	// ──────────────────────────────────────────────────────────
@@ -472,17 +490,23 @@ class ADVAPAFO_Passkeys {
 		global $wpdb;
 
 		// Purge expired rate-limit rows.
-		$rate_table = esc_sql( $wpdb->prefix . self::TABLE_RATE_LIMITS );
+		$rate_table = self::quote_table_name( $wpdb->prefix . self::TABLE_RATE_LIMITS );
+		if ( '' === $rate_table ) {
+			return;
+		}
 		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- maintenance delete on plugin-owned custom rate table.
-			"DELETE FROM {$rate_table} WHERE (lock_expires_at IS NULL OR lock_expires_at <= UTC_TIMESTAMP()) AND (window_expires_at IS NULL OR window_expires_at <= UTC_TIMESTAMP())" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			'DELETE FROM ' . $rate_table . ' WHERE (lock_expires_at IS NULL OR lock_expires_at <= UTC_TIMESTAMP()) AND (window_expires_at IS NULL OR window_expires_at <= UTC_TIMESTAMP())' // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 		);
 
 		// Purge log rows older than the configured retention window.
 		$keep_days = max( 7, (int) get_option( 'advapafo_log_retention_days', 90 ) );
-		$log_table = esc_sql( $wpdb->prefix . 'advapafo_logs' );
+		$log_table = self::quote_table_name( $wpdb->prefix . 'advapafo_logs' );
+		if ( '' === $log_table ) {
+			return;
+		}
 		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- maintenance delete on plugin-owned log table.
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-				"DELETE FROM {$log_table} WHERE log_timestamp < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				'DELETE FROM ' . $log_table . ' WHERE log_timestamp < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %d DAY)', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 				$keep_days
 			)
 		);
@@ -1008,11 +1032,15 @@ class ADVAPAFO_Passkeys {
 		}
 
 		global $wpdb;
-		$table = $wpdb->prefix . self::TABLE_CREDENTIALS;
+		$table     = $wpdb->prefix . self::TABLE_CREDENTIALS;
+		$table_sql = self::quote_table_name( $table );
+		if ( '' === $table_sql ) {
+			wp_send_json_error( array( 'message' => 'Credential table unavailable.' ), 500 );
+		}
 
 		$cred = $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- credential ownership check against custom table.
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- credential ownership check against custom table.
-				"SELECT id, user_id FROM {$table} WHERE id = %d AND revoked_at IS NULL LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				'SELECT id, user_id FROM ' . $table_sql . ' WHERE id = %d AND revoked_at IS NULL LIMIT 1', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 				$cred_row_id
 			)
 		);
@@ -2091,46 +2119,58 @@ class ADVAPAFO_Passkeys {
 
 		$lite_table   = $wpdb->prefix . self::TABLE_CREDENTIALS;
 		$shared_table = $wpdb->prefix . 'wpk_credentials';
+		$lite_sql     = self::quote_table_name( $lite_table );
+		$shared_sql   = self::quote_table_name( $shared_table );
 
 		if ( $table !== $lite_table && $table !== $shared_table ) {
 			return null;
 		}
 
+		$credential_columns = $this->get_credential_select_columns_sql();
+
 		if ( $user_id > 0 ) {
-			if ( $table === $lite_table ) {
+			if ( $table === $lite_table && '' !== $lite_sql ) {
 				return $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication flow requires immediate credential lookup.
 					$wpdb->prepare(
-						"SELECT * FROM {$wpdb->prefix}advapafo_credentials WHERE credential_id_hash = %s AND user_id = %d AND revoked_at IS NULL LIMIT 1",
+						'SELECT ' . $credential_columns . ' FROM ' . $lite_sql . ' WHERE credential_id_hash = %s AND user_id = %d AND revoked_at IS NULL LIMIT 1', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 						$credential_hash,
 						$user_id
 					)
 				);
 			}
 
-			return $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication flow requires immediate credential lookup.
-				$wpdb->prepare(
-					"SELECT * FROM {$wpdb->prefix}wpk_credentials WHERE credential_id_hash = %s AND user_id = %d AND revoked_at IS NULL LIMIT 1",
-					$credential_hash,
-					$user_id
-				)
-			);
+			if ( '' !== $shared_sql ) {
+				return $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication flow requires immediate credential lookup.
+					$wpdb->prepare(
+						'SELECT ' . $credential_columns . ' FROM ' . $shared_sql . ' WHERE credential_id_hash = %s AND user_id = %d AND revoked_at IS NULL LIMIT 1', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
+						$credential_hash,
+						$user_id
+					)
+				);
+			}
+
+			return null;
 		}
 
-		if ( $table === $lite_table ) {
+		if ( $table === $lite_table && '' !== $lite_sql ) {
 			return $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication flow requires immediate credential lookup.
 				$wpdb->prepare(
-					"SELECT * FROM {$wpdb->prefix}advapafo_credentials WHERE credential_id_hash = %s AND revoked_at IS NULL LIMIT 1",
+					'SELECT ' . $credential_columns . ' FROM ' . $lite_sql . ' WHERE credential_id_hash = %s AND revoked_at IS NULL LIMIT 1', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 					$credential_hash
 				)
 			);
 		}
 
-		return $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication flow requires immediate credential lookup.
-			$wpdb->prepare(
-				"SELECT * FROM {$wpdb->prefix}wpk_credentials WHERE credential_id_hash = %s AND revoked_at IS NULL LIMIT 1",
-				$credential_hash
-			)
-		);
+		if ( '' !== $shared_sql ) {
+			return $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication flow requires immediate credential lookup.
+				$wpdb->prepare(
+					'SELECT ' . $credential_columns . ' FROM ' . $shared_sql . ' WHERE credential_id_hash = %s AND revoked_at IS NULL LIMIT 1', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
+					$credential_hash
+				)
+			);
+		}
+
+		return null;
 	}
 
 	/**
@@ -2143,22 +2183,25 @@ class ADVAPAFO_Passkeys {
 	private function get_active_credentials_rows_from_table( string $table, int $user_id ): array {
 		global $wpdb;
 
-		$lite_table   = $wpdb->prefix . self::TABLE_CREDENTIALS;
-		$shared_table = $wpdb->prefix . 'wpk_credentials';
+		$lite_table         = $wpdb->prefix . self::TABLE_CREDENTIALS;
+		$shared_table       = $wpdb->prefix . 'wpk_credentials';
+		$lite_sql           = self::quote_table_name( $lite_table );
+		$shared_sql         = self::quote_table_name( $shared_table );
+		$credential_columns = $this->get_credential_select_columns_sql();
 
-		if ( $table === $lite_table ) {
+		if ( $table === $lite_table && '' !== $lite_sql ) {
 			return (array) $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication requires live reads from plugin credential table.
 				$wpdb->prepare(
-					"SELECT * FROM {$wpdb->prefix}advapafo_credentials WHERE user_id = %d AND revoked_at IS NULL ORDER BY created_at DESC",
+					'SELECT ' . $credential_columns . ' FROM ' . $lite_sql . ' WHERE user_id = %d AND revoked_at IS NULL ORDER BY created_at DESC', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 					$user_id
 				)
 			);
 		}
 
-		if ( $table === $shared_table ) {
+		if ( $table === $shared_table && '' !== $shared_sql ) {
 			return (array) $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- authentication requires live reads from plugin credential table.
 				$wpdb->prepare(
-					"SELECT * FROM {$wpdb->prefix}wpk_credentials WHERE user_id = %d AND revoked_at IS NULL ORDER BY created_at DESC",
+					'SELECT ' . $credential_columns . ' FROM ' . $shared_sql . ' WHERE user_id = %d AND revoked_at IS NULL ORDER BY created_at DESC', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 					$user_id
 				)
 			);
@@ -2179,20 +2222,22 @@ class ADVAPAFO_Passkeys {
 
 		$lite_table   = $wpdb->prefix . self::TABLE_CREDENTIALS;
 		$shared_table = $wpdb->prefix . 'wpk_credentials';
+		$lite_sql     = self::quote_table_name( $lite_table );
+		$shared_sql   = self::quote_table_name( $shared_table );
 
-		if ( $table === $lite_table ) {
+		if ( $table === $lite_table && '' !== $lite_sql ) {
 			return (array) $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- admin credential metadata view reads plugin-owned table.
 				$wpdb->prepare(
-					"SELECT id, credential_id, credential_id_hash, credential_label, created_at, last_used_at FROM {$wpdb->prefix}advapafo_credentials WHERE user_id = %d AND revoked_at IS NULL ORDER BY created_at DESC",
+					'SELECT id, credential_id, credential_id_hash, credential_label, created_at, last_used_at FROM ' . $lite_sql . ' WHERE user_id = %d AND revoked_at IS NULL ORDER BY created_at DESC', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 					$user_id
 				)
 			);
 		}
 
-		if ( $table === $shared_table ) {
+		if ( $table === $shared_table && '' !== $shared_sql ) {
 			return (array) $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- admin credential metadata view reads plugin-owned table.
 				$wpdb->prepare(
-					"SELECT id, credential_id, credential_id_hash, credential_label, created_at, last_used_at FROM {$wpdb->prefix}wpk_credentials WHERE user_id = %d AND revoked_at IS NULL ORDER BY created_at DESC",
+					'SELECT id, credential_id, credential_id_hash, credential_label, created_at, last_used_at FROM ' . $shared_sql . ' WHERE user_id = %d AND revoked_at IS NULL ORDER BY created_at DESC', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 					$user_id
 				)
 			);
@@ -2213,25 +2258,27 @@ class ADVAPAFO_Passkeys {
 
 		$lite_table   = $wpdb->prefix . self::TABLE_CREDENTIALS;
 		$shared_table = $wpdb->prefix . 'wpk_credentials';
+		$lite_sql     = self::quote_table_name( $lite_table );
+		$shared_sql   = self::quote_table_name( $shared_table );
 
-		if ( $table === $lite_table ) {
+		if ( $table === $lite_table && '' !== $lite_sql ) {
 			return array_map(
 				'strval',
 				(array) $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- realtime credential count used for limit enforcement.
 					$wpdb->prepare(
-						"SELECT credential_id_hash FROM {$wpdb->prefix}advapafo_credentials WHERE user_id = %d AND revoked_at IS NULL",
+						'SELECT credential_id_hash FROM ' . $lite_sql . ' WHERE user_id = %d AND revoked_at IS NULL', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 						$user_id
 					)
 				)
 			);
 		}
 
-		if ( $table === $shared_table ) {
+		if ( $table === $shared_table && '' !== $shared_sql ) {
 			return array_map(
 				'strval',
 				(array) $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- realtime credential count used for limit enforcement.
 					$wpdb->prepare(
-						"SELECT credential_id_hash FROM {$wpdb->prefix}wpk_credentials WHERE user_id = %d AND revoked_at IS NULL",
+						'SELECT credential_id_hash FROM ' . $shared_sql . ' WHERE user_id = %d AND revoked_at IS NULL', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 						$user_id
 					)
 				)
@@ -2467,11 +2514,14 @@ class ADVAPAFO_Passkeys {
 	 */
 	private function is_locked_out( string $prefix, $identifier ): bool {
 		global $wpdb;
-		$table = esc_sql( $wpdb->prefix . self::TABLE_RATE_LIMITS );
+		$table = self::quote_table_name( $wpdb->prefix . self::TABLE_RATE_LIMITS );
+		if ( '' === $table ) {
+			return false;
+		}
 		$key   = $this->bucket_key( $prefix, (string) $identifier );
 		$until = $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- rate-limit lock checks require live table reads.
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-				"SELECT lock_expires_at FROM {$table} WHERE bucket_key = %s LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				'SELECT lock_expires_at FROM ' . $table . ' WHERE bucket_key = %s LIMIT 1', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 				$key
 			)
 		);
@@ -2486,7 +2536,10 @@ class ADVAPAFO_Passkeys {
 	 */
 	private function record_failure( string $prefix, $identifier ): void {
 		global $wpdb;
-		$table   = esc_sql( $wpdb->prefix . self::TABLE_RATE_LIMITS );
+		$table = self::quote_table_name( $wpdb->prefix . self::TABLE_RATE_LIMITS );
+		if ( '' === $table ) {
+			return;
+		}
 		$key     = $this->bucket_key( $prefix, (string) $identifier );
 		$window  = $this->get_rate_window();
 		$max     = $this->get_rate_max_attempts();
@@ -2494,15 +2547,15 @@ class ADVAPAFO_Passkeys {
 
 		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- rate-limit bucket initialization write.
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-				"INSERT IGNORE INTO {$table} (bucket_key, failure_count, window_expires_at, lock_expires_at, updated_at) VALUES (%s, 0, NULL, NULL, UTC_TIMESTAMP())", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				'INSERT IGNORE INTO ' . $table . ' (bucket_key, failure_count, window_expires_at, lock_expires_at, updated_at) VALUES (%s, 0, NULL, NULL, UTC_TIMESTAMP())', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 				$key
 			)
 		);
 
 		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- rate-limit counters and expirations are updated atomically.
-			$wpdb->prepare( // phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is derived from plugin constant + WP prefix and escaped via esc_sql().
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is derived from plugin constant + WP prefix and escaped via esc_sql().
-				"UPDATE {$table} SET
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- table identifier is strict-validated by quote_table_name().
+				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table identifier is strict-validated by quote_table_name().
+				'UPDATE ' . $table . ' SET
                 failure_count = IF(window_expires_at IS NULL OR window_expires_at <= UTC_TIMESTAMP(), 1, failure_count + 1),
                 window_expires_at = IF(window_expires_at IS NULL OR window_expires_at <= UTC_TIMESTAMP(), DATE_ADD(UTC_TIMESTAMP(), INTERVAL %d SECOND), window_expires_at),
                 lock_expires_at = IF(
@@ -2511,7 +2564,7 @@ class ADVAPAFO_Passkeys {
                     IF(lock_expires_at IS NOT NULL AND lock_expires_at <= UTC_TIMESTAMP(), NULL, lock_expires_at)
                 ),
                 updated_at = UTC_TIMESTAMP()
-			WHERE bucket_key = %s",
+			WHERE bucket_key = %s', // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table identifier is strict-validated by quote_table_name().
 				$window,
 				$max,
 				$lockout,
@@ -2532,11 +2585,14 @@ class ADVAPAFO_Passkeys {
 	 */
 	private function clear_failures( string $prefix, $identifier ): void {
 		global $wpdb;
-		$table = esc_sql( $wpdb->prefix . self::TABLE_RATE_LIMITS );
-		$key   = $this->bucket_key( $prefix, (string) $identifier );
+		$table = self::quote_table_name( $wpdb->prefix . self::TABLE_RATE_LIMITS );
+		if ( '' === $table ) {
+			return;
+		}
+		$key = $this->bucket_key( $prefix, (string) $identifier );
 		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- explicit reset of a rate-limit bucket.
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-				"DELETE FROM {$table} WHERE bucket_key = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				'DELETE FROM ' . $table . ' WHERE bucket_key = %s', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 				$key
 			)
 		);
@@ -2547,10 +2603,41 @@ class ADVAPAFO_Passkeys {
 	 */
 	private function cleanup_rate_table(): void {
 		global $wpdb;
-		$table = esc_sql( $wpdb->prefix . self::TABLE_RATE_LIMITS );
+		$table = self::quote_table_name( $wpdb->prefix . self::TABLE_RATE_LIMITS );
+		if ( '' === $table ) {
+			return;
+		}
 		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- periodic cleanup for expired rate-limit buckets.
-			"DELETE FROM {$table} WHERE (lock_expires_at IS NULL OR lock_expires_at <= UTC_TIMESTAMP()) AND (window_expires_at IS NULL OR window_expires_at <= UTC_TIMESTAMP())" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			'DELETE FROM ' . $table . ' WHERE (lock_expires_at IS NULL OR lock_expires_at <= UTC_TIMESTAMP()) AND (window_expires_at IS NULL OR window_expires_at <= UTC_TIMESTAMP())' // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 		);
+	}
+
+	/**
+	 * Quote and validate a table name for SQL usage.
+	 *
+	 * @param string $table_name Table name.
+	 * @return string
+	 */
+	private static function quote_table_name( string $table_name ): string {
+		$table_name = trim( $table_name );
+		if ( '' === $table_name ) {
+			return '';
+		}
+
+		if ( 1 !== preg_match( '/^[A-Za-z0-9_]+$/', $table_name ) ) {
+			return '';
+		}
+
+		return '`' . $table_name . '`';
+	}
+
+	/**
+	 * Get explicit credential columns used by row-fetch queries.
+	 *
+	 * @return string
+	 */
+	private function get_credential_select_columns_sql(): string {
+		return 'id, user_id, credential_id, credential_id_hash, credential_public_key, sign_count, transports, credential_label, backed_up, created_at, last_used_at, revoked_at';
 	}
 
 	// ──────────────────────────────────────────────────────────

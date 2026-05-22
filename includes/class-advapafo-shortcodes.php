@@ -59,10 +59,15 @@ class ADVAPAFO_Shortcodes {
 			return false;
 		}
 
-		$table = $wpdb->prefix . ADVAPAFO_Passkeys::TABLE_CREDENTIALS;
+		$table_name = $wpdb->prefix . ADVAPAFO_Passkeys::TABLE_CREDENTIALS;
+		if ( 1 !== preg_match( '/^[A-Za-z0-9_]+$/', $table_name ) ) {
+			return false;
+		}
+
+		$table = '`' . $table_name . '`';
 		$count = (int) $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom credentials table presence check.
 			$wpdb->prepare(
-				"SELECT COUNT(*) FROM {$table} WHERE user_id = %d AND revoked_at IS NULL", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is plugin-controlled constant + prefix.
+				'SELECT COUNT(*) FROM ' . $table . ' WHERE user_id = %d AND revoked_at IS NULL', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated via regex.
 				$user_id
 			)
 		);
