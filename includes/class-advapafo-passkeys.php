@@ -1501,102 +1501,12 @@ class ADVAPAFO_Passkeys {
 				)
 			);
 
-			if ( $this->should_use_signon_fallback( $signed_in, $user, $credential_hash ) ) {
-				$this->log_event(
-					'login_signon_fallback_used',
-					array(
-						'user_id'          => $user_id,
-						'credential_hash'  => $credential_hash,
-						'wp_error_primary' => $primary,
-					)
-				);
-
-				$this->establish_authenticated_session_direct( $user, $remember );
-				return;
-			}
-
 			throw new \RuntimeException( 'WordPress sign-in pipeline rejected authentication.' );
 		}
 
 		if ( ! $signed_in instanceof WP_User || (int) $signed_in->ID !== $user_id ) {
 			throw new \RuntimeException( 'WordPress sign-in returned an unexpected user.' );
 		}
-	}
-
-	/**
-	 * Establish a direct authenticated session as an optional fallback mode.
-	 *
-	 * @param WP_User $user     Authenticated user.
-	 * @param bool    $remember Whether to issue a persistent login cookie.
-	 */
-	private function establish_authenticated_session_direct( WP_User $user, bool $remember ): void {
-		$user_id = (int) $user->ID;
-
-		wp_clear_auth_cookie();
-		wp_set_current_user( $user_id );
-		wp_set_auth_cookie( $user_id, $remember );
-		do_action( 'wp_login', $user->user_login, $user ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core hook emitted for fallback session compatibility.
-	}
-
-	/**
-	 * Determine whether fallback to direct session mode should be used.
-	 *
-	 * @param WP_Error $error           Sign-on pipeline error.
-	 * @param WP_User  $user            Authenticated user.
-	 * @param string   $credential_hash SHA-256 credential hash.
-	 * @return bool
-	 */
-	private function should_use_signon_fallback( WP_Error $error, WP_User $user, string $credential_hash ): bool {
-		$enabled = (bool) apply_filters( 'advapafo_passkey_enable_signon_fallback', false, $error, $user, $credential_hash );
-		if ( ! $enabled ) {
-			return false;
-		}
-
-		$error_codes = array_values( array_filter( array_map( 'sanitize_key', (array) $error->get_error_codes() ) ) );
-		if ( empty( $error_codes ) ) {
-			return false;
-		}
-
-		$deny_patterns = (array) apply_filters(
-			'advapafo_passkey_signon_fallback_deny_patterns',
-			array( 'lock', 'limit', 'blocked', 'captcha', 'otp', '2fa', 'two_factor' ),
-			$user,
-			$credential_hash
-		);
-
-		foreach ( $error_codes as $code ) {
-			foreach ( $deny_patterns as $pattern ) {
-				$pattern = sanitize_key( (string) $pattern );
-				if ( '' !== $pattern && false !== strpos( $code, $pattern ) ) {
-					return false;
-				}
-			}
-		}
-
-		$allowed_codes = (array) apply_filters(
-			'advapafo_passkey_signon_fallback_allowed_codes',
-			array( 'incorrect_password', 'empty_password' ),
-			$user,
-			$credential_hash
-		);
-		$allowed_codes = array_values( array_filter( array_map( 'sanitize_key', $allowed_codes ) ) );
-
-		if ( empty( $allowed_codes ) ) {
-			return false;
-		}
-
-		$has_allowed_match = false;
-		foreach ( $error_codes as $code ) {
-			if ( in_array( $code, $allowed_codes, true ) ) {
-				$has_allowed_match = true;
-				continue;
-			}
-
-			// Hard stop: every WP_Error code must be explicitly allowed.
-			return false;
-		}
-
-		return $has_allowed_match;
 	}
 
 	/**
@@ -1922,20 +1832,24 @@ class ADVAPAFO_Passkeys {
 		$label = $this->get_last_used_pill_label( null );
 
 		if ( ! $this->is_post_request() ) {
-			wp_send_json_success(
+			wp_send_json_error(
 				array(
+					'message'  => __( 'Invalid request method.', 'advanced-passkey-login' ),
 					'showPill' => false,
 					'label'    => $label,
-				)
+				),
+				405
 			);
 		}
 
 		if ( ! check_ajax_referer( 'advapafo_login', 'nonce', false ) ) {
-			wp_send_json_success(
+			wp_send_json_error(
 				array(
+					'message'  => __( 'Security check failed. Please refresh and try again.', 'advanced-passkey-login' ),
 					'showPill' => false,
 					'label'    => $label,
-				)
+				),
+				403
 			);
 		}
 

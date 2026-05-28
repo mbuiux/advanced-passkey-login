@@ -596,7 +596,7 @@ class ADVAPAFO_Settings {
 					<?php $this->render_tab_link( $base_url, 'shortcodes', __( 'Shortcodes', 'advanced-passkey-login' ), $active_tab ); ?>
 				</nav>
 
-				<div class="advapafo-layout<?php echo 'dashboard' === $active_tab ? ' advapafo-layout--dashboard' : ''; ?>">
+				<div class="advapafo-layout<?php echo esc_attr( 'dashboard' === $active_tab ? ' advapafo-layout--dashboard' : '' ); ?>">
 					<main class="advapafo-main-panel">
 						<?php if ( 'dashboard' === $active_tab ) : ?>
 							<?php $this->render_dashboard_tab(); ?>
@@ -1087,7 +1087,7 @@ class ADVAPAFO_Settings {
 								<?php foreach ( $authenticator_rows as $row ) : ?>
 									<li>
 										<div>
-											<?php echo $this->render_authenticator_provider_badge( (string) $row['provider'], array( 'provider_key' => (string) ( $row['provider_key'] ?? '' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- output is escaped/sanitized in renderer. ?>
+											<?php echo wp_kses( $this->render_authenticator_provider_badge( (string) $row['provider'], array( 'provider_key' => (string) ( $row['provider_key'] ?? '' ) ) ), $this->get_authenticator_provider_badge_allowed_html() ); ?>
 											<span class="wpkpro-dashboard-auth-total"><?php echo esc_html( number_format_i18n( (int) $row['total'] ) ); ?></span>
 										</div>
 									</li>
@@ -1195,7 +1195,7 @@ class ADVAPAFO_Settings {
 													<?php if ( '—' === $authenticator ) : ?>
 														&mdash;
 													<?php else : ?>
-														<?php echo $this->render_authenticator_provider_badge( $authenticator, array( 'provider_key' => $authenticator_key ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- output is escaped/sanitized in renderer. ?>
+														<?php echo wp_kses( $this->render_authenticator_provider_badge( $authenticator, array( 'provider_key' => $authenticator_key ) ), $this->get_authenticator_provider_badge_allowed_html() ); ?>
 													<?php endif; ?>
 												</span>
 												<span class="wpkpro-dashboard-activity-time"><?php echo esc_html( $timestamp_display ); ?><?php echo '' !== $timestamp_relative ? esc_html( ' | ' . $timestamp_relative ) : ''; ?></span>
@@ -1771,6 +1771,62 @@ class ADVAPAFO_Settings {
 
 		// Markup is assembled from sanitized text/key plus static internal SVG strings.
 		return $html;
+	}
+
+	/**
+	 * Allowed HTML tags/attributes for authenticator badge markup.
+	 *
+	 * @return array<string,array<string,bool>>
+	 */
+	private function get_authenticator_provider_badge_allowed_html(): array {
+		return array(
+			'span'   => array(
+				'class'       => true,
+				'aria-hidden' => true,
+			),
+			'svg'    => array(
+				'viewBox'         => true,
+				'width'           => true,
+				'height'          => true,
+				'fill'            => true,
+				'aria-hidden'     => true,
+				'focusable'       => true,
+				'role'            => true,
+				'stroke'          => true,
+				'stroke-width'    => true,
+				'stroke-linecap'  => true,
+				'stroke-linejoin' => true,
+				'fill-opacity'    => true,
+				'xmlns'           => true,
+			),
+			'path'   => array(
+				'd'               => true,
+				'fill'            => true,
+				'stroke'          => true,
+				'stroke-width'    => true,
+				'stroke-linecap'  => true,
+				'stroke-linejoin' => true,
+				'fill-opacity'    => true,
+			),
+			'circle' => array(
+				'cx'           => true,
+				'cy'           => true,
+				'r'            => true,
+				'fill'         => true,
+				'stroke'       => true,
+				'stroke-width' => true,
+			),
+			'rect'   => array(
+				'x'            => true,
+				'y'            => true,
+				'width'        => true,
+				'height'       => true,
+				'rx'           => true,
+				'fill'         => true,
+				'stroke'       => true,
+				'stroke-width' => true,
+			),
+		);
 	}
 
 	/**
