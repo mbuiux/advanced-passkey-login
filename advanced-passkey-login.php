@@ -279,11 +279,6 @@ add_filter(
 
 		$links[] = sprintf(
 			'<a href="%s" target="_blank" rel="noopener noreferrer">%s</a>',
-			esc_url( 'https://profiles.wordpress.org/mbuiux/' ),
-			esc_html__( 'Author: mbuiux', 'advanced-passkey-login' )
-		);
-		$links[] = sprintf(
-			'<a href="%s" target="_blank" rel="noopener noreferrer">%s</a>',
 			esc_url( 'https://wordpress.org/plugins/advanced-passkey-login/' ),
 			esc_html__( 'Plugin Page', 'advanced-passkey-login' )
 		);
