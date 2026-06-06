@@ -1,6 +1,10 @@
-# AI Coding Instructions (Lite Plugin)
+# AI Coding Instructions
 
 Scope: This file governs all AI-generated changes in this plugin.
+
+## Plugin Context
+- Plugin slug: `advanced-passkey-login`
+- Main bootstrap file: `advanced-passkey-login.php`
 
 ## Core Goal
 Build and maintain this plugin to WordPress.org plugin standards with secure, performant, and maintainable code.
@@ -39,15 +43,13 @@ Build and maintain this plugin to WordPress.org plugin standards with secure, pe
 5. Nonce verification must happen inside the handling function, not at plugin load time.
 6. Never gate nonce checks behind optional branches that can be skipped.
 
-## Regression Guardrails (Previous Audit Fixes)
+## Regression Guardrails
 1. Do not create users or establish logged-in sessions as a fallback inside authentication handlers.
 2. Do not call `wp_set_current_user()` or `wp_set_auth_cookie()` directly to bypass normal authentication verification.
 3. Authentication/login handlers must only log in already-validated users through WordPress-authenticated flows and must fail closed on exceptions.
 4. If nonce verification fails in AJAX/REST handlers, always return an explicit error response (`wp_send_json_error`, `wp_die`, or safe redirect+exit), never `wp_send_json_success`.
 5. For JSON endpoints, nonce failure responses should use an error payload and appropriate HTTP status (typically `403`).
-6. Treat these two areas as non-regression requirements in every edit: user/session creation in auth paths, and nonce-failure response semantics.
-7. Treat output escaping as a non-regression requirement: do not introduce direct unescaped `echo` of variables, options, or generated markup.
-8. For passwordless recovery/magic-link logins, use a controlled authenticated handoff (for example one-time internal `wp_signon` flow) instead of direct session mutation calls.
+6. Treat output escaping as a non-regression requirement: do not introduce direct unescaped `echo` of variables, options, or generated markup.
 
 ## Input Handling Rules
 1. Sanitize as soon as data enters the system.
@@ -80,12 +82,12 @@ Build and maintain this plugin to WordPress.org plugin standards with secure, pe
 5. Ensure uninstall and data handling are predictable and documented.
 
 ## Plugin Path and URL Resolution Rules
-1. Never hardcode plugin folder slugs in path/URL resolution (for example, avoid `plugins_url( 'advanced-passkey-login' )`).
+1. Never hardcode this plugin slug in path/URL resolution (for example, avoid `plugins_url( 'advanced-passkey-login' )`).
 2. In the main plugin file, define canonical constants using `__FILE__`:
    - `ADVAPAFO_PLUGIN_FILE` as `__FILE__`
    - `ADVAPAFO_PLUGIN_DIR` as `plugin_dir_path( __FILE__ )`
    - `ADVAPAFO_PLUGIN_URL` as `plugin_dir_url( __FILE__ )`
-3. In other files, prefer `ADVAPAFO_PLUGIN_DIR`, `ADVAPAFO_PLUGIN_URL`, or `plugins_url( 'relative/path', ADVAPAFO_PLUGIN_FILE )`.
+3. In other files, prefer these constants or `plugins_url( 'relative/path', ADVAPAFO_PLUGIN_FILE )`.
 4. For writable files, use `wp_upload_dir()` and plugin-owned subdirectories under uploads; do not write to plugin directories.
 
 ## Validation Target Rules
