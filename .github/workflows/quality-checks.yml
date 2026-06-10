@@ -167,6 +167,17 @@ jobs:
           echo "Plugin Check errors: {$errors}\n";
           echo "Plugin Check warnings: {$warnings}\n";
           if ($errors > 0 || $warnings > 0) {
+              fwrite(STDERR, "Plugin Check findings:\n");
+              foreach ($rows as $index => $row) {
+                $type = strtoupper((string)($row["type"] ?? "UNKNOWN"));
+                $code = (string)($row["code"] ?? "unknown_code");
+                $line = (int)($row["line"] ?? 0);
+                $message = (string)($row["message"] ?? "");
+                fwrite(STDERR, sprintf("%d. [%s] %s (line %d): %s\n", $index + 1, $type, $code, $line, $message));
+                if (!empty($row["docs"])) {
+                  fwrite(STDERR, "   Docs: " . (string)$row["docs"] . "\n");
+                }
+              }
               exit(1);
           }
           '
