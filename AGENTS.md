@@ -81,6 +81,12 @@ Build and maintain this plugin to WordPress.org plugin standards with secure, pe
 4. Keep licensing/upsell messaging compliant and non-deceptive.
 5. Ensure uninstall and data handling are predictable and documented.
 
+## Release Tag Rules
+1. The deploy workflow trigger accepts any Git tag, but agents must only create release tags in strict semantic format: `X.Y.Z`.
+2. Do not use a leading `v` in release tags (use `1.2.3`, not `v1.2.3`).
+3. Release tag value must exactly match the plugin version in `advanced-passkey-login.php` and the Stable tag in `readme.txt`.
+4. Do not create pre-release WordPress.org deploy tags (for example `-beta`, `-rc`, or build metadata suffixes).
+
 ## Plugin Path and URL Resolution Rules
 1. Never hardcode this plugin slug in path/URL resolution (for example, avoid `plugins_url( 'advanced-passkey-login' )`).
 2. In the main plugin file, define canonical constants using `__FILE__`:

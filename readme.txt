@@ -1,14 +1,14 @@
 === Advanced Passkeys for Secure Login ===
 Contributors: wppasskey, mbuiux
-Tags: passkeys, webauthn, passwordless, login, security, fido2, biometric, faceid, touchid, secure login, authentication
+Tags: passkeys, webauthn, passwordless, login, security
 Requires at least: 6.0
-Tested up to: 6.9
+Tested up to: 7.0
 Stable tag: 1.1.5
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Eliminate weak passwords and brute-force attacks. Secure your WordPress site with native, biometric passwordless passkey login using Face ID, Touch ID, Windows Hello, and hardware security keys.
+Secure WordPress with passwordless passkey login using Face ID, Touch ID, Windows Hello, and hardware security keys.
 
 == Description ==
 

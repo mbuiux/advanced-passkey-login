@@ -1,0 +1,19 @@
+# Development Tools
+.git
+.github
+.gitignore
+.distignore
+AGENTS.md
+README.md
+node_modules/
+package.json
+package-lock.json
+
+# Build configs
+webpack.config.js
+vite.config.js
+tailwind.config.js
+
+# Local or OS junk
+.DS_Store
+Thumbs.db
