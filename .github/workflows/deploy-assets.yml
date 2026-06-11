@@ -1,0 +1,87 @@
+name: Deploy WordPress.org Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      asset_filename:
+        description: Filename from .wordpress-org to deploy (for example screenshot-5.png)
+        required: true
+        default: screenshot-5.png
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-assets:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install SVN client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y subversion
+
+      - name: Validate selected asset exists
+        env:
+          ASSET_FILENAME: ${{ inputs.asset_filename }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$ASSET_FILENAME" ]]; then
+            echo "asset_filename input is required"
+            exit 1
+          fi
+
+          if [[ "$ASSET_FILENAME" == *"/"* ]]; then
+            echo "asset_filename must be a filename only, without path separators"
+            exit 1
+          fi
+
+          if [[ ! -f ".wordpress-org/$ASSET_FILENAME" ]]; then
+            echo "Asset not found in .wordpress-org/$ASSET_FILENAME"
+            exit 1
+          fi
+
+      - name: Checkout WordPress.org assets
+        env:
+          SLUG: advanced-passkey-login
+        run: |
+          set -euo pipefail
+          svn checkout "https://plugins.svn.wordpress.org/$SLUG/assets" wporg-assets
+
+      - name: Copy selected asset and commit
+        env:
+          ASSET_FILENAME: ${{ inputs.asset_filename }}
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          cp ".wordpress-org/$ASSET_FILENAME" "wporg-assets/$ASSET_FILENAME"
+
+          if [[ "$ASSET_FILENAME" == *.png ]]; then
+            svn propset svn:mime-type image/png "wporg-assets/$ASSET_FILENAME"
+          elif [[ "$ASSET_FILENAME" == *.jpg || "$ASSET_FILENAME" == *.jpeg ]]; then
+            svn propset svn:mime-type image/jpeg "wporg-assets/$ASSET_FILENAME"
+          elif [[ "$ASSET_FILENAME" == *.gif ]]; then
+            svn propset svn:mime-type image/gif "wporg-assets/$ASSET_FILENAME"
+          elif [[ "$ASSET_FILENAME" == *.svg ]]; then
+            svn propset svn:mime-type image/svg+xml "wporg-assets/$ASSET_FILENAME"
+          fi
+
+          svn add --force "wporg-assets/$ASSET_FILENAME" || true
+
+          if [[ -z "$(svn status wporg-assets)" ]]; then
+            echo "No asset changes detected; nothing to commit."
+            exit 0
+          fi
+
+          svn commit wporg-assets \
+            --username "$SVN_USERNAME" \
+            --password "$SVN_PASSWORD" \
+            --non-interactive \
+            --no-auth-cache \
+            -m "Update WordPress.org asset: $ASSET_FILENAME"
