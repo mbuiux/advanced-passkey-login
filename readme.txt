@@ -18,12 +18,12 @@ Passwords are the single biggest security risk for your WordPress site. They get
 
 Users register a passkey just once using their device's built-in biometric sensor (Face ID, Touch ID, Windows Hello) or a hardware security key (like a YubiKey). Future sign-ins take less than a second—completely bypassing the traditional password field.
 
-### ⚡ Why Switch to Passkeys?
+=== Why Switch to Passkeys? ===
 * **Immune to Phishing:** Passkeys are cryptographically bound to your specific domain. A fake login page cannot trick or steal a passkey.
 * **Goodbye Brute-Force:** Because there is no static password on the server to guess, automated bot attacks are completely neutralized.
 * **Ultimate Ecosystem Sync:** Works seamlessly with iCloud Keychain, Google Password Manager, and 1Password for painless cross-device access.
 
-### 🔌 Ecosystem-Wide Integrations Included
+=== Ecosystem-Wide Integrations Included ===
 Unlike basic alternatives, this plugin features intelligent, dependency-aware integration modules that automatically inject passkey entry points into your favorite plugins. It features out-of-the-box support for **WooCommerce, Easy Digital Downloads, MemberPress, Ultimate Member, LearnDash, BuddyBoss, Gravity Forms, and PMPro**.
 
 == Features ==
@@ -133,43 +133,44 @@ Yes. Simply add `define( 'ADVAPAFO_RP_ID', 'example.com' );` directly into your 
 
 == Developer Hooks: Last Used Pill ==
 
-Developers can use these filters inside a theme or functionality plugin to globally customize or suppress the login form's **Last used** passkey indicator pill.
+Developers can use these filters inside a theme or functionality plugin to globally customize or suppress the login form's Last used passkey indicator pill.
 
-= Hook list =
+= Available filters =
 
 * `advapafo_last_used_pill_freshness_days` — default 90 days
 * `advapafo_last_used_pill_visible` — final on/off override
 * `advapafo_last_used_pill_label` — customize label text
 
-= Example Implementation =
 
-	<?php
-	/**
-	 * Example customization for Last used login pill.
-	 */
+= Example implementation =
 
-	// Show pill if passkey login is within 120 days.
-	add_filter( 'advapafo_last_used_pill_freshness_days', function ( $days, $user ) {
-		unset( $user );
-		return 120;
-	}, 10, 2 );
+    <?php
+    /**
+     * Example customization for Last used login pill.
+     */
 
-	// Hide pill for administrator accounts.
-	add_filter( 'advapafo_last_used_pill_visible', function ( $visible, $timestamp, $freshness_days, $user ) {
-		unset( $timestamp, $freshness_days );
+    // Show pill if passkey login is within 120 days.
+    add_filter( 'advapafo_last_used_pill_freshness_days', function ( $days, $user ) {
+        unset( $user );
+        return 120;
+    }, 10, 2 );
 
-		if ( $user instanceof WP_User && in_array( 'administrator', (array) $user->roles, true ) ) {
-			return false;
-		}
+    // Hide pill for administrator accounts.
+    add_filter( 'advapafo_last_used_pill_visible', function ( $visible, $timestamp, $freshness_days, $user ) {
+        unset( $timestamp, $freshness_days );
 
-		return $visible;
-	}, 10, 4 );
+        if ( $user instanceof WP_User && in_array( 'administrator', (array) $user->roles, true ) ) {
+            return false;
+        }
 
-	// Label override.
-	add_filter( 'advapafo_last_used_pill_label', function ( $label, $user ) {
-		unset( $user );
-		return 'Previously used';
-	}, 10, 2 );
+        return $visible;
+    }, 10, 4 );
+
+    // Label override.
+    add_filter( 'advapafo_last_used_pill_label', function ( $label, $user ) {
+        unset( $user );
+        return 'Previously used';
+    }, 10, 2 );
 
 == Screenshots ==
 
