@@ -22,6 +22,35 @@
     color: var(--advapafo-ink);
 }
 
+#footer-upgrade .advapafo-footer-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #646970;
+    text-decoration: none;
+    text-underline-offset: 2px;
+}
+
+#footer-upgrade .advapafo-footer-link__icon {
+    width: 14px;
+    height: 14px;
+    font-size: 14px;
+    line-height: 14px;
+}
+
+#footer-upgrade .advapafo-footer-link:hover,
+#footer-upgrade .advapafo-footer-link:focus {
+    color: #3858e9;
+    text-decoration: underline;
+}
+
+#footer-upgrade .advapafo-footer-link__icon--svg svg {
+    display: block;
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
 /* Hard-block: any notice injected inside the hero or shell by WP core or
    third-party plugins is invisible. Our notices live in .advapafo-notices-wrap
    which sits BEFORE .advapafo-premium-shell in the DOM. */

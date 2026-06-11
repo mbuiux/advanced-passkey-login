@@ -105,13 +105,13 @@ class ADVAPAFO_Settings {
 		}
 
 		$wordpress_link = sprintf(
-			'<a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a>',
+			'<a class="advapafo-footer-link" href="%1$s" target="_blank" rel="noopener noreferrer"><span class="dashicons dashicons-wordpress advapafo-footer-link__icon" aria-hidden="true"></span><span>%2$s</span></a>',
 			esc_url( 'https://wordpress.org/plugins/advanced-passkey-login' ),
 			esc_html__( 'WordPress.org', 'advanced-passkey-login' )
 		);
 
 		$github_link = sprintf(
-			'<a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s</a>',
+			'<a class="advapafo-footer-link" href="%1$s" target="_blank" rel="noopener noreferrer"><span class="advapafo-footer-link__icon advapafo-footer-link__icon--svg" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 .5C5.65.5.5 5.67.5 12.06c0 5.12 3.3 9.46 7.87 10.99.58.11.79-.26.79-.57v-2.02c-3.2.7-3.88-1.56-3.88-1.56-.52-1.34-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.03 1.78 2.7 1.27 3.36.97.1-.76.4-1.27.73-1.56-2.56-.29-5.25-1.29-5.25-5.73 0-1.26.45-2.29 1.19-3.1-.12-.29-.51-1.46.11-3.04 0 0 .97-.32 3.18 1.18a10.97 10.97 0 0 1 5.8 0c2.2-1.5 3.17-1.18 3.17-1.18.63 1.58.24 2.75.12 3.04.74.81 1.18 1.84 1.18 3.1 0 4.46-2.69 5.44-5.26 5.72.41.36.78 1.08.78 2.18v3.24c0 .32.21.69.8.57A11.6 11.6 0 0 0 23.5 12.06C23.5 5.67 18.35.5 12 .5Z"/></svg></span><span>%2$s</span></a>',
 			esc_url( 'https://github.com/mbuiux/advanced-passkey-login' ),
 			esc_html__( 'GitHub', 'advanced-passkey-login' )
 		);
