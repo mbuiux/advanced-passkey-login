@@ -1,0 +1,79 @@
+name: Deploy and Release Plugin
+
+on:
+  push:
+    tags:
+      - '*'
+
+# Ensures the token has rights to create a release on GitHub
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  tag:
+    name: New tag
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Verify Quality Checks passed for this commit
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        REPO="${{ github.repository }}"
+        SHA="${GITHUB_SHA}"
+        URL="https://api.github.com/repos/${REPO}/actions/workflows/quality-checks.yml/runs?head_sha=${SHA}&status=completed&per_page=50"
+
+        curl -fsSL \
+          -H "Authorization: Bearer ${GH_TOKEN}" \
+          -H "Accept: application/vnd.github+json" \
+          "$URL" > /tmp/quality-runs.json
+
+        python3 - <<'PY'
+        import json
+        import sys
+
+        with open('/tmp/quality-runs.json', 'r', encoding='utf-8') as fh:
+            payload = json.load(fh)
+
+        runs = payload.get('workflow_runs', [])
+        if not runs:
+            print('No completed Quality Checks workflow run found for this commit.')
+            sys.exit(1)
+
+        for run in runs:
+            if run.get('conclusion') == 'success':
+                print('Quality Checks passed:', run.get('html_url', ''))
+                sys.exit(0)
+
+        print('Quality Checks found for commit, but none passed.')
+        for run in runs:
+            print('-', run.get('conclusion'), run.get('html_url', ''))
+        sys.exit(1)
+        PY
+
+    - name: WordPress.org Plugin Deploy
+      id: deploy
+      uses: 10up/action-wordpress-plugin-deploy@stable
+      with:
+        generate-zip: true
+      env:
+        SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+        SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+        SLUG: advanced-passkey-login
+
+    - name: Create GitHub release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: ${{ steps.deploy.outputs.zip-path }}
+        name: Release ${{ github.ref_name }}
+        tag_name: ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
