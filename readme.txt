@@ -174,10 +174,13 @@ Developers can use these filters inside a theme or functionality plugin to globa
 
 == Screenshots ==
 
-1. The seamless "Sign in with Passkey" action on the core WordPress login screen.
-2. Registering an authenticated biometric credential inside the user profile page.
-3. The centralized passkeys management table featuring real-time revoking controls.
-4. The Advanced Passkeys configuration dashboard featuring active integration indicators.
+1. Dashboard tab with security activity metrics, authenticator overview, and last-login insights.
+2. Settings tab with everyday passkey controls, integration module toggles, and eligible role selection.
+3. Advanced tab showing technical configuration for login UX, RP settings, challenge timeouts, and rate limiting.
+4. Shortcodes tab with copy-ready shortcode cards, quick-start guidance, and integration snippets.
+5. User Profile passkey management panel for registering a new passkey and revoking existing credentials.
+6. Core WordPress login form with the "Sign in with Passkey" button below the standard password flow in the default black.
+7. Core WordPress login form with Last used passkey indicator pill for returning users in light gray.
 
 == Changelog ==
 

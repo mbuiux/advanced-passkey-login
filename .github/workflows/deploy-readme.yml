@@ -1,0 +1,76 @@
+name: Deploy WordPress.org Readme
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-readme:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install SVN client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y subversion
+
+      - name: Resolve stable tag from readme
+        id: stable
+        run: |
+          set -euo pipefail
+
+          stable_tag=$(awk -F': ' '/^Stable tag:/ {print $2; exit}' readme.txt | tr -d '[:space:]')
+
+          if [[ -z "$stable_tag" ]]; then
+            echo "Could not resolve Stable tag from readme.txt"
+            exit 1
+          fi
+
+          if [[ "$stable_tag" == "trunk" ]]; then
+            echo "Stable tag points to trunk; this workflow expects a numeric stable tag."
+            exit 1
+          fi
+
+          echo "stable_tag=$stable_tag" >> "$GITHUB_OUTPUT"
+          echo "Resolved stable tag: $stable_tag"
+
+      - name: Checkout WordPress.org plugin repo
+        env:
+          SLUG: advanced-passkey-login
+        run: |
+          set -euo pipefail
+          svn checkout "https://plugins.svn.wordpress.org/$SLUG" wporg-plugin
+
+      - name: Copy readme to trunk and stable tag
+        env:
+          STABLE_TAG: ${{ steps.stable.outputs.stable_tag }}
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          cp readme.txt wporg-plugin/trunk/readme.txt
+
+          if [[ ! -d "wporg-plugin/tags/$STABLE_TAG" ]]; then
+            echo "Stable tag directory not found in SVN: tags/$STABLE_TAG"
+            exit 1
+          fi
+
+          cp readme.txt "wporg-plugin/tags/$STABLE_TAG/readme.txt"
+
+          if [[ -z "$(svn status wporg-plugin)" ]]; then
+            echo "No readme changes detected; nothing to commit."
+            exit 0
+          fi
+
+          svn commit wporg-plugin \
+            --username "$SVN_USERNAME" \
+            --password "$SVN_PASSWORD" \
+            --non-interactive \
+            --no-auth-cache \
+            -m "Update readme text for trunk and tags/$STABLE_TAG"
