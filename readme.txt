@@ -3,7 +3,7 @@ Contributors: wppasskey, mbuiux
 Tags: passkeys, webauthn, passwordless, login, security
 Requires at least: 6.0
 Tested up to: 7.0
-Stable tag: 1.1.5
+Stable tag: 1.1.6
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -181,6 +181,9 @@ Developers can use these filters inside a theme or functionality plugin to globa
 
 == Changelog ==
 
+= 1.1.6 =
+* Improved: include WordPress.org assets directory in release source so banners, icon, and screenshots deploy via SVN automation.
+
 = 1.1.5 =
 * Improved: sanitize-early handling for transports and credential request inputs.
 * Improved: stricter nonce-gated debug query handling in settings.
@@ -220,6 +223,9 @@ Developers can use these filters inside a theme or functionality plugin to globa
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.1.6 =
+Recommended update: ensures WordPress.org visual assets are included in automated deploys.
 
 = 1.1.5 =
 Recommended update: strengthens sanitize/validate/escape protections and improves CI workflow safety checks.
