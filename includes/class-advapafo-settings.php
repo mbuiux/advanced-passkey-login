@@ -90,7 +90,7 @@ class ADVAPAFO_Settings {
 			return $text;
 		}
 
-		return esc_html__( 'Maintained by mbuiux', 'advanced-passkey-login' );
+		return esc_html__( 'Maintained by wppasskey', 'advanced-passkey-login' );
 	}
 
 	/**
