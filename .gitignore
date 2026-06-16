@@ -1,3 +1,7 @@
+node_modules/
+playwright-report/
+test-results/
+
 # macOS Finder metadata
 .DS_Store
 **/.DS_Store

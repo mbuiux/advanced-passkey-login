@@ -8,6 +8,10 @@ README.md
 node_modules/
 package.json
 package-lock.json
+playwright.config.ts
+playwright-report/
+test-results/
+tests/
 
 # Build configs
 webpack.config.js

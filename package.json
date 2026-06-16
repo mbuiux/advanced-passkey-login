@@ -1,0 +1,16 @@
+{
+  "name": "advanced-passkey-login-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Playwright end-to-end tests for the Advanced Passkey Login WordPress plugin",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "PWDEBUG=1 playwright test",
+    "test:e2e:list": "playwright test --list"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "typescript": "^5.9.2"
+  }
+}

@@ -81,6 +81,18 @@ Build and maintain this plugin to WordPress.org plugin standards with secure, pe
 4. Keep licensing/upsell messaging compliant and non-deceptive.
 5. Ensure uninstall and data handling are predictable and documented.
 
+## Release Packaging Guardrails
+1. The WordPress.org deploy workflow (`.github/workflows/deploy.yml`) packages from repository content using `.distignore`.
+2. Any E2E or local QA harness files must be excluded from release artifacts via `.distignore`.
+3. Keep these entries in `.distignore` whenever Playwright is present:
+   - `tests/`
+   - `playwright.config.ts`
+   - `playwright-report/`
+   - `test-results/`
+   - `package.json`
+   - `package-lock.json`
+4. Before release tags, verify a dist simulation (or equivalent package check) confirms those paths are absent from the final deploy payload.
+
 ## Release Tag Rules
 1. The deploy workflow trigger accepts any Git tag, but agents must only create release tags in strict semantic format: `X.Y.Z`.
 2. Do not use a leading `v` in release tags (use `1.2.3`, not `v1.2.3`).

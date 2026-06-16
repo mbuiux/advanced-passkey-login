@@ -81,3 +81,37 @@ Built-in aware modules, Gutenberg blocks, and shortcodes that auto-inject into p
 git clone [https://github.com/mbuiux/advanced-passkey-login.git](https://github.com/mbuiux/advanced-passkey-login.git)
 cd advanced-passkey-login
 composer install
+
+## Playwright E2E Testing
+
+This repository includes a Playwright suite for the WordPress login and WebAuthn passkey flow.
+
+### Install test dependencies
+
+```bash
+npm install
+npx playwright install chromium
+```
+
+### Run tests
+
+```bash
+# Uses https://wp-test.local by default
+npm run test:e2e
+
+# Override target URL when needed
+PLAYWRIGHT_BASE_URL=https://wp-test.local npm run test:e2e
+
+# Show discovered tests without executing browser flows
+npm run test:e2e:list
+```
+
+### Included suite
+
+- `tests/e2e/advanced-passkey-login.spec.ts`
+
+The suite covers:
+- strict CSP compatibility on `wp-login.php`
+- virtual authenticator registration + login via CDP WebAuthn
+- anti-caching challenge isolation across independent browser contexts
+- expired nonce/session-timeout handling with user-friendly error assertions
