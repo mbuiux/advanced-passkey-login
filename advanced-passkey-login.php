@@ -4,7 +4,7 @@
  * Plugin URI:  https://wordpress.org/plugins/advanced-passkey-login/
  * Description: Advanced Passkeys for Secure Login enables passwordless passkey login for WordPress. Supports Face ID, Touch ID, Windows Hello, YubiKey, and more.
  * Version:     1.1.6
- * Author:      mbuiux
+ * Author:      wppasskey
  * Author URI:  https://profiles.wordpress.org/mbuiux/
  * License:     GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
