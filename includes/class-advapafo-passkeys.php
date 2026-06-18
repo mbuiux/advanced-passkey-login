@@ -905,6 +905,7 @@ class ADVAPAFO_Passkeys {
 			// phpcs:disable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
 			$cred_id   = $this->encode_b64url( $result->credentialId );
 			$cred_hash = hash( 'sha256', $cred_id );
+			$aaguid    = $this->format_aaguid_for_logging( isset( $result->AAGUID ) && is_string( $result->AAGUID ) ? $result->AAGUID : '' );
 
 			global $wpdb;
 			$table = $wpdb->prefix . self::TABLE_CREDENTIALS;
@@ -937,6 +938,7 @@ class ADVAPAFO_Passkeys {
 				array(
 					'user_id'         => (int) $user->ID,
 					'credential_hash' => $cred_hash,
+					'aaguid'          => $aaguid,
 				)
 			);
 
@@ -1007,14 +1009,19 @@ class ADVAPAFO_Passkeys {
 		}
 
 		global $wpdb;
-		$table = $wpdb->prefix . self::TABLE_CREDENTIALS;
+		$resolved = null;
+		foreach ( $this->get_credentials_table_names_ordered() as $candidate_table ) {
+			$candidate = $this->get_active_credential_by_row_id_from_table( $candidate_table, $cred_row_id );
+			if ( $candidate ) {
+				$resolved = array(
+					'table' => $candidate_table,
+					'row'   => $candidate,
+				);
+				break;
+			}
+		}
 
-		$cred = $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- credential ownership check against custom table.
-			$wpdb->prepare( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- credential ownership check against custom table.
-				"SELECT id, user_id FROM {$wpdb->prefix}advapafo_credentials WHERE id = %d AND revoked_at IS NULL LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is plugin-owned and prefix-scoped.
-				$cred_row_id
-			)
-		);
+		$cred = is_array( $resolved ) && isset( $resolved['row'] ) && is_object( $resolved['row'] ) ? $resolved['row'] : null;
 
 		if ( ! $cred ) {
 			wp_send_json_error( array( 'message' => 'Credential not found.' ), 404 );
@@ -1024,13 +1031,21 @@ class ADVAPAFO_Passkeys {
 			wp_send_json_error( array( 'message' => 'Unauthorized' ), 403 );
 		}
 
-		$wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- custom credentials table revoke timestamp update.
-			$table,
-			array( 'revoked_at' => current_time( 'mysql' ) ),
-			array( 'id' => $cred_row_id ),
-			array( '%s' ),
-			array( '%d' )
-		);
+		$resolved_table = isset( $resolved['table'] ) && is_string( $resolved['table'] ) ? $resolved['table'] : '';
+		if ( '' === $resolved_table || ! $this->revoke_credential_by_row_id_from_table( $resolved_table, $cred_row_id ) ) {
+			wp_send_json_error( array( 'message' => 'Failed to revoke passkey.' ), 500 );
+		}
+
+		$cred_hash = isset( $cred->credential_id_hash ) ? strtolower( trim( (string) $cred->credential_id_hash ) ) : '';
+		if ( '' !== $cred_hash ) {
+			foreach ( $this->get_credentials_table_names_ordered() as $candidate_table ) {
+				if ( $candidate_table === $resolved_table ) {
+					continue;
+				}
+
+				$this->revoke_credential_by_hash_from_table( $candidate_table, $cred_hash, (int) $cred->user_id );
+			}
+		}
 
 		$this->log_event(
 			'revoked',
@@ -1049,6 +1064,101 @@ class ADVAPAFO_Passkeys {
 		do_action( 'advapafo_passkey_revoked', (int) $cred->user_id, $cred_row_id );
 
 		wp_send_json_success( array( 'message' => 'Passkey revoked.' ) );
+	}
+
+	/**
+	 * Fetch a single active credential row by numeric row ID from a supported table.
+	 *
+	 * @param string $table Table name.
+	 * @param int    $row_id Credential row ID.
+	 * @return object|null
+	 */
+	private function get_active_credential_by_row_id_from_table( string $table, int $row_id ): ?object {
+		global $wpdb;
+
+		$lite_table   = $wpdb->prefix . self::TABLE_CREDENTIALS;
+		$shared_table = $wpdb->prefix . 'wpk_credentials';
+
+		if ( $row_id < 1 || ( $table !== $lite_table && $table !== $shared_table ) ) {
+			return null;
+		}
+
+		if ( $table === $lite_table ) {
+			return $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- credential revoke requires immediate row lookup.
+				$wpdb->prepare(
+					"SELECT id, user_id, credential_id_hash FROM {$wpdb->prefix}advapafo_credentials WHERE id = %d AND revoked_at IS NULL LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is plugin-owned and prefix-scoped.
+					$row_id
+				)
+			);
+		}
+
+		return $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- credential revoke requires immediate row lookup.
+			$wpdb->prepare(
+				"SELECT id, user_id, credential_id_hash FROM {$wpdb->prefix}wpk_credentials WHERE id = %d AND revoked_at IS NULL LIMIT 1", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is plugin-owned and prefix-scoped.
+				$row_id
+			)
+		);
+	}
+
+	/**
+	 * Revoke a credential row by row ID in a supported table.
+	 *
+	 * @param string $table Table name.
+	 * @param int    $row_id Credential row ID.
+	 * @return bool
+	 */
+	private function revoke_credential_by_row_id_from_table( string $table, int $row_id ): bool {
+		global $wpdb;
+
+		$lite_table   = $wpdb->prefix . self::TABLE_CREDENTIALS;
+		$shared_table = $wpdb->prefix . 'wpk_credentials';
+
+		if ( $row_id < 1 || ( $table !== $lite_table && $table !== $shared_table ) ) {
+			return false;
+		}
+
+		$updated = $wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- explicit credential revoke update.
+			$table,
+			array( 'revoked_at' => current_time( 'mysql' ) ),
+			array(
+				'id'         => $row_id,
+				'revoked_at' => null,
+			),
+			array( '%s' ),
+			array( '%d', '%s' )
+		);
+
+		return is_int( $updated ) && $updated > 0;
+	}
+
+	/**
+	 * Revoke any duplicate active credentials matching hash+user in a supported table.
+	 *
+	 * @param string $table Table name.
+	 * @param string $credential_hash Credential SHA-256 hash.
+	 * @param int    $user_id User ID.
+	 * @return void
+	 */
+	private function revoke_credential_by_hash_from_table( string $table, string $credential_hash, int $user_id ): void {
+		global $wpdb;
+
+		$lite_table   = $wpdb->prefix . self::TABLE_CREDENTIALS;
+		$shared_table = $wpdb->prefix . 'wpk_credentials';
+		if ( '' === $credential_hash || $user_id < 1 || ( $table !== $lite_table && $table !== $shared_table ) ) {
+			return;
+		}
+
+		$wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- cleanup revoke for duplicated credential entries across compatibility tables.
+			$table,
+			array( 'revoked_at' => current_time( 'mysql' ) ),
+			array(
+				'credential_id_hash' => $credential_hash,
+				'user_id'            => $user_id,
+				'revoked_at'         => null,
+			),
+			array( '%s' ),
+			array( '%s', '%d', '%s' )
+		);
 	}
 
 	// ──────────────────────────────────────────────────────────
@@ -1691,6 +1801,36 @@ class ADVAPAFO_Passkeys {
 	 */
 	private function encode_b64url( string $value ): string {
 		return rtrim( strtr( base64_encode( $value ), '+/', '-_' ), '=' ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- canonical base64url encoding for WebAuthn payloads.
+	}
+
+	/**
+	 * Convert raw authenticator AAGUID bytes into canonical UUID format.
+	 *
+	 * @param string $aaguid_raw Raw binary/string AAGUID.
+	 * @return string
+	 */
+	private function format_aaguid_for_logging( string $aaguid_raw ): string {
+		$aaguid_raw = trim( $aaguid_raw );
+		if ( '' === $aaguid_raw ) {
+			return '';
+		}
+
+		$hex = '';
+		if ( strlen( $aaguid_raw ) === 16 ) {
+			$hex = strtolower( bin2hex( $aaguid_raw ) );
+		} elseif ( preg_match( '/^[a-fA-F0-9-]{32,36}$/', $aaguid_raw ) ) {
+			$hex = strtolower( str_replace( '-', '', $aaguid_raw ) );
+		}
+
+		if ( ! preg_match( '/^[a-f0-9]{32}$/', $hex ) ) {
+			return '';
+		}
+
+		if ( str_repeat( '0', 32 ) === $hex ) {
+			return '';
+		}
+
+		return substr( $hex, 0, 8 ) . '-' . substr( $hex, 8, 4 ) . '-' . substr( $hex, 12, 4 ) . '-' . substr( $hex, 16, 4 ) . '-' . substr( $hex, 20, 12 );
 	}
 
 	// ──────────────────────────────────────────────────────────

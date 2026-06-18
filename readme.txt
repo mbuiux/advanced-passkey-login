@@ -3,7 +3,7 @@ Contributors: wppasskey, mbuiux
 Tags: passkeys, webauthn, passwordless, login, security
 Requires at least: 6.0
 Tested up to: 7.0
-Stable tag: 1.1.7
+Stable tag: 1.1.8
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -184,6 +184,11 @@ Developers can use these filters inside a theme or functionality plugin to globa
 
 == Changelog ==
 
+= 1.1.8 =
+* Fixed: passkey revoke reliability across compatibility credential tables.
+* Improved: authenticator provider normalization and typo tolerance for brand labeling.
+* Improved: reporting metadata normalization for authenticator detection.
+
 = 1.1.7 =
 * Improved: aligned plugin header author metadata with readme contributors.
 
@@ -229,6 +234,9 @@ Developers can use these filters inside a theme or functionality plugin to globa
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.1.8 =
+Recommended update: fixes passkey revocation edge cases and improves authenticator brand detection/reporting reliability.
 
 = 1.1.7 =
 Recommended update: aligns plugin author metadata for WordPress.org listing consistency.

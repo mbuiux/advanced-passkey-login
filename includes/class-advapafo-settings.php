@@ -1215,16 +1215,21 @@ class ADVAPAFO_Settings {
 										$authenticator     = '—';
 										$authenticator_key = 'unknown';
 										if ( ! in_array( $method_key, array( 'password', 'security' ), true ) ) {
+											$credential_hash   = isset( $data['credential_hash'] ) ? (string) $data['credential_hash'] : '';
 											$raw_authenticator = isset( $data['authenticator'] ) ? (string) $data['authenticator'] : '';
 											$raw_label         = '';
-											if ( '' === $raw_authenticator && isset( $data['credential_hash'] ) ) {
-												$raw_authenticator = $this->lookup_credential_label_for_hash( (string) $data['credential_hash'] );
+											$raw_aaguid        = isset( $data['aaguid'] ) ? (string) $data['aaguid'] : '';
+											if ( '' === $raw_authenticator && '' !== $credential_hash ) {
+												$raw_authenticator = $this->lookup_credential_label_for_hash( $credential_hash );
+											}
+											if ( '' === $raw_aaguid && '' !== $credential_hash ) {
+												$raw_aaguid = $this->lookup_credential_aaguid_for_hash( $credential_hash );
 											}
 											if ( isset( $data['authenticator_label'] ) ) {
 												$raw_label = (string) $data['authenticator_label'];
 											}
 
-											$meta              = $this->resolve_authenticator_metadata_for_reporting( $raw_authenticator, $raw_label );
+											$meta              = $this->resolve_authenticator_metadata_for_reporting( $raw_authenticator, $raw_label, $raw_aaguid );
 											$authenticator     = (string) ( $meta['label'] ?? '' );
 											$authenticator_key = (string) ( $meta['key'] ?? 'unknown' );
 											if ( '' === $authenticator ) {
@@ -1311,6 +1316,92 @@ class ADVAPAFO_Settings {
 
 		$cache[ $credential_hash ] = $label;
 		return $label;
+	}
+
+	/**
+	 * Resolve credential AAGUID from registration audit logs by credential hash.
+	 *
+	 * @param string $credential_hash Credential SHA-256 hash.
+	 * @return string
+	 */
+	private function lookup_credential_aaguid_for_hash( string $credential_hash ): string {
+		static $cache    = array();
+		$credential_hash = strtolower( trim( $credential_hash ) );
+		if ( '' === $credential_hash ) {
+			return '';
+		}
+
+		if ( isset( $cache[ $credential_hash ] ) ) {
+			return (string) $cache[ $credential_hash ];
+		}
+
+		global $wpdb;
+		$logs_table = $wpdb->prefix . 'advapafo_logs';
+		if ( ! $this->table_exists( $logs_table ) ) {
+			$cache[ $credential_hash ] = '';
+			return '';
+		}
+
+		$table_sql = $this->quote_table_name( $logs_table );
+		if ( '' === $table_sql ) {
+			$cache[ $credential_hash ] = '';
+			return '';
+		}
+
+		$like_token = '"credential_hash":"' . $wpdb->esc_like( $credential_hash ) . '"';
+		$rows       = $wpdb->get_col( // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- bounded lookup from plugin-owned logs table.
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
+				'SELECT log_data FROM ' . $table_sql . ' WHERE event_type = %s AND log_data LIKE %s ORDER BY id DESC LIMIT 12',
+				'registered',
+				'%' . $like_token . '%'
+			)
+		);
+
+		$resolved = '';
+		foreach ( $rows as $row_json ) {
+			$payload = json_decode( (string) $row_json, true );
+			if ( ! is_array( $payload ) ) {
+				continue;
+			}
+
+			$row_hash = isset( $payload['credential_hash'] ) ? strtolower( trim( (string) $payload['credential_hash'] ) ) : '';
+			if ( '' === $row_hash || ! hash_equals( $credential_hash, $row_hash ) ) {
+				continue;
+			}
+
+			$resolved = isset( $payload['aaguid'] ) ? $this->normalize_authenticator_aaguid( (string) $payload['aaguid'] ) : '';
+			if ( '' !== $resolved ) {
+				break;
+			}
+		}
+
+		$cache[ $credential_hash ] = $resolved;
+		return $resolved;
+	}
+
+	/**
+	 * Normalize AAGUID input into canonical lowercase UUID format.
+	 *
+	 * @param string $aaguid Raw AAGUID value.
+	 * @return string
+	 */
+	private function normalize_authenticator_aaguid( string $aaguid ): string {
+		$aaguid = strtolower( trim( $aaguid ) );
+		if ( '' === $aaguid ) {
+			return '';
+		}
+
+		$hex = str_replace( '-', '', $aaguid );
+		if ( ! preg_match( '/^[a-f0-9]{32}$/', $hex ) ) {
+			return '';
+		}
+
+		if ( str_repeat( '0', 32 ) === $hex ) {
+			return '';
+		}
+
+		return substr( $hex, 0, 8 ) . '-' . substr( $hex, 8, 4 ) . '-' . substr( $hex, 12, 4 ) . '-' . substr( $hex, 16, 4 ) . '-' . substr( $hex, 20, 12 );
 	}
 
 	/**
@@ -1759,41 +1850,21 @@ class ADVAPAFO_Settings {
 	 *
 	 * @param string $provider Raw provider value from logs.
 	 * @param string $label Raw credential label.
+	 * @param string $aaguid Raw AAGUID value.
 	 * @return array{label:string,key:string}
 	 */
-	private function resolve_authenticator_metadata_for_reporting( string $provider = '', string $label = '' ): array {
+	private function resolve_authenticator_metadata_for_reporting( string $provider = '', string $label = '', string $aaguid = '' ): array {
 		$provider = trim( $provider );
 		$label    = trim( $label );
-		$resolved = $provider;
+		$aaguid   = $this->normalize_authenticator_aaguid( $aaguid );
+		$resolved = $this->resolve_authenticator_provider_label_from_signals( $provider, $label, $aaguid );
 
-		$provider_lc = $this->normalize_provider_string_for_matching( $provider );
-		if ( strpos( $provider_lc, 'apple password' ) !== false || strpos( $provider_lc, 'apple passwords' ) !== false || strpos( $provider_lc, 'icloud keychain' ) !== false ) {
-			$resolved = 'iCloud Keychain';
+		if ( '' === $resolved ) {
+			$resolved = '' !== $provider ? $provider : $label;
 		}
 
 		if ( '' === $resolved || stripos( $resolved, 'unknown' ) !== false || stripos( $resolved, 'platform authenticator' ) !== false ) {
-			$label_lc = $this->normalize_provider_string_for_matching( $label );
-			if ( strpos( $label_lc, 'icloud' ) !== false || strpos( $label_lc, 'apple' ) !== false ) {
-				$resolved = 'iCloud Keychain';
-			} elseif ( strpos( $label_lc, 'bitwarden' ) !== false ) {
-				$resolved = 'Bitwarden';
-			} elseif ( strpos( $label_lc, 'chrome' ) !== false || strpos( $label_lc, 'google' ) !== false ) {
-				$resolved = 'Google Password Manager';
-			} elseif ( strpos( $label_lc, 'samsung' ) !== false ) {
-				$resolved = 'Samsung Pass';
-			} elseif ( strpos( $label_lc, 'lastpass' ) !== false ) {
-				$resolved = 'LastPass';
-			} elseif ( strpos( $label_lc, '1password' ) !== false ) {
-				$resolved = '1Password';
-			} elseif ( strpos( $label_lc, 'dashlane' ) !== false ) {
-				$resolved = 'Dashlane';
-			} elseif ( strpos( $label_lc, 'nordpass' ) !== false ) {
-				$resolved = 'NordPass';
-			}
-		}
-
-		if ( '' === $resolved ) {
-			$resolved = 'Unknown Authenticator';
+			$resolved = $this->infer_unknown_authenticator_label( $provider, $label );
 		}
 
 		$resolved = (string) apply_filters( 'advapafo_authenticator_provider_label', $resolved, '', '' !== $label ? $label : $provider );
@@ -1805,6 +1876,93 @@ class ADVAPAFO_Settings {
 			'label' => $resolved,
 			'key'   => $this->normalize_authenticator_provider_key( $resolved ),
 		);
+	}
+
+	/**
+	 * Resolve a canonical provider label from raw provider/label signals.
+	 *
+	 * @param string $provider Raw provider value from logs.
+	 * @param string $label Raw credential label.
+	 * @param string $aaguid Canonical AAGUID value.
+	 * @return string
+	 */
+	private function resolve_authenticator_provider_label_from_signals( string $provider = '', string $label = '', string $aaguid = '' ): string {
+		if ( '' !== $aaguid ) {
+			$aaguid_map = array(
+				'08987058-cadc-4b81-b6e1-30de50dcbe96' => 'Windows Hello',
+				'2fc0579f-8113-47ea-b116-bb5a8db9202a' => 'YubiKey',
+			);
+
+			/**
+			 * Filter known AAGUID to provider label mappings.
+			 *
+			 * @param array<string,string> $aaguid_map Existing AAGUID map.
+			 */
+			$aaguid_map = (array) apply_filters( 'advapafo_authenticator_aaguid_map', $aaguid_map );
+			if ( isset( $aaguid_map[ $aaguid ] ) ) {
+				$mapped = trim( (string) $aaguid_map[ $aaguid ] );
+				if ( '' !== $mapped ) {
+					return $mapped;
+				}
+			}
+		}
+
+		$signal = $this->normalize_provider_string_for_matching( trim( $provider . ' ' . $label ) );
+		if ( '' === $signal ) {
+			return '';
+		}
+
+		$known_providers = array(
+			'iCloud Keychain'         => array( 'icloud', 'i cloud', 'apple password', 'apple passwords', 'apple passkey', 'apple keychain' ),
+			'Bitwarden'               => array( 'bitwarden', 'bitwarded' ),
+			'Google Password Manager' => array( 'google password manager', 'google passkey', 'google', 'chrome password', 'chrome passkey', 'chrome' ),
+			'Samsung Pass'            => array( 'samsung pass', 'samsung passkey', 'samsung' ),
+			'LastPass'                => array( 'lastpass' ),
+			'1Password'               => array( '1password', 'onepassword' ),
+			'Dashlane'                => array( 'dashlane' ),
+			'NordPass'                => array( 'nordpass' ),
+			'Proton Pass'             => array( 'proton pass', 'protonpass' ),
+			'Windows Hello'           => array( 'windows hello', 'microsoft authenticator' ),
+			'YubiKey'                 => array( 'yubikey', 'yubico' ),
+			'Keeper'                  => array( 'keeper' ),
+			'Enpass'                  => array( 'enpass' ),
+			'RoboForm'                => array( 'roboform' ),
+		);
+
+		foreach ( $known_providers as $canonical => $needles ) {
+			foreach ( $needles as $needle ) {
+				if ( strpos( $signal, (string) $needle ) !== false ) {
+					return $canonical;
+				}
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Infer unknown authenticator category from weaker hints.
+	 *
+	 * @param string $provider Raw provider value from logs.
+	 * @param string $label Raw credential label.
+	 * @return string
+	 */
+	private function infer_unknown_authenticator_label( string $provider = '', string $label = '' ): string {
+		$signal = $this->normalize_provider_string_for_matching( trim( $provider . ' ' . $label ) );
+
+		if ( strpos( $signal, 'security key' ) !== false || strpos( $signal, 'fido' ) !== false || strpos( $signal, 'u2f' ) !== false || strpos( $signal, 'hardware key' ) !== false || strpos( $signal, 'usb key' ) !== false ) {
+			return 'Unknown Security Key';
+		}
+
+		if ( strpos( $signal, 'cross device' ) !== false || strpos( $signal, 'cross-device' ) !== false || strpos( $signal, 'hybrid' ) !== false || strpos( $signal, 'cable' ) !== false || strpos( $signal, 'phone passkey' ) !== false || strpos( $signal, 'qr passkey' ) !== false ) {
+			return 'Unknown Cross-Device Authenticator';
+		}
+
+		if ( strpos( $signal, 'platform authenticator' ) !== false || strpos( $signal, 'platform passkey' ) !== false || strpos( $signal, 'this device' ) !== false || strpos( $signal, 'touch id' ) !== false || strpos( $signal, 'face id' ) !== false || strpos( $signal, 'biometric' ) !== false ) {
+			return 'Unknown Platform Authenticator';
+		}
+
+		return 'Unknown Authenticator';
 	}
 
 	/**
@@ -1902,14 +2060,14 @@ class ADVAPAFO_Settings {
 	private function normalize_authenticator_provider_key( string $provider ): string {
 		$provider_lc = $this->normalize_provider_string_for_matching( $provider );
 
-		if ( strpos( $provider_lc, 'bitwarden' ) !== false ) {
+		if ( strpos( $provider_lc, 'bitwarden' ) !== false || strpos( $provider_lc, 'bitwarded' ) !== false ) {
 			return 'bitwarden';
 		}
 		if ( strpos( $provider_lc, 'icloud' ) !== false || strpos( $provider_lc, 'apple' ) !== false ) {
 			return 'icloud';
 		}
-		if ( strpos( $provider_lc, '1password' ) !== false ) {
-			return '1password';
+		if ( strpos( $provider_lc, '1password' ) !== false || strpos( $provider_lc, 'onepassword' ) !== false ) {
+			return 'onepassword';
 		}
 		if ( strpos( $provider_lc, 'lastpass' ) !== false ) {
 			return 'lastpass';
@@ -1920,6 +2078,21 @@ class ADVAPAFO_Settings {
 		if ( strpos( $provider_lc, 'samsung' ) !== false ) {
 			return 'samsung';
 		}
+		if ( strpos( $provider_lc, 'windows hello' ) !== false || strpos( $provider_lc, 'microsoft authenticator' ) !== false ) {
+			return 'windows-hello';
+		}
+		if ( strpos( $provider_lc, 'yubikey' ) !== false || strpos( $provider_lc, 'yubico' ) !== false ) {
+			return 'yubikey';
+		}
+		if ( strpos( $provider_lc, 'keeper' ) !== false ) {
+			return 'keeper';
+		}
+		if ( strpos( $provider_lc, 'enpass' ) !== false ) {
+			return 'enpass';
+		}
+		if ( strpos( $provider_lc, 'roboform' ) !== false ) {
+			return 'roboform';
+		}
 		if ( strpos( $provider_lc, 'dashlane' ) !== false ) {
 			return 'dashlane';
 		}
@@ -1928,6 +2101,15 @@ class ADVAPAFO_Settings {
 		}
 		if ( strpos( $provider_lc, 'proton' ) !== false ) {
 			return 'proton-pass';
+		}
+		if ( strpos( $provider_lc, 'unknown platform' ) !== false || strpos( $provider_lc, 'platform authenticator' ) !== false ) {
+			return 'unknown-platform';
+		}
+		if ( strpos( $provider_lc, 'unknown security key' ) !== false || strpos( $provider_lc, 'security key' ) !== false || strpos( $provider_lc, 'u2f' ) !== false || strpos( $provider_lc, 'fido' ) !== false ) {
+			return 'unknown-security-key';
+		}
+		if ( strpos( $provider_lc, 'unknown cross device' ) !== false || strpos( $provider_lc, 'cross device' ) !== false || strpos( $provider_lc, 'cross-device' ) !== false || strpos( $provider_lc, 'hybrid' ) !== false || strpos( $provider_lc, 'cable' ) !== false ) {
+			return 'unknown-cross-device';
 		}
 
 		return 'unknown';
@@ -1940,7 +2122,9 @@ class ADVAPAFO_Settings {
 	 * @return string
 	 */
 	private function normalize_provider_string_for_matching( string $provider ): string {
-		$normalized = strtolower( trim( $provider ) );
+		$normalized = strtolower( wp_strip_all_tags( trim( $provider ) ) );
+		$normalized = str_replace( array( '-', '_', '/', '\\', '.', ',', ':', ';', '|', '(', ')', '[', ']' ), ' ', $normalized );
+		$normalized = preg_replace( '/[^a-z0-9\s]+/u', ' ', $normalized );
 		$normalized = preg_replace( '/\s+/u', ' ', $normalized );
 
 		return is_string( $normalized ) ? trim( $normalized ) : '';
@@ -1963,6 +2147,7 @@ class ADVAPAFO_Settings {
 					$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M10.8 8.6c0-1.5 1.2-2.3 1.2-2.3-.7-1.1-1.8-1.3-2.2-1.3-.9-.1-1.8.5-2.3.5-.6 0-1.4-.5-2.2-.5-1.2 0-2.2.7-2.8 1.8-1.2 2.1-.3 5.2.9 6.9.6.8 1.2 1.7 2.1 1.7.8 0 1.2-.5 2.2-.5s1.4.5 2.2.5c.9 0 1.5-.8 2.1-1.6.6-.9.9-1.8 1-1.8-.1 0-2-.8-2-3.4Z" fill="currentColor"/><path d="M9.4 3.8c.4-.5.7-1.3.6-2-.7 0-1.5.5-1.9 1-.4.4-.7 1.2-.6 1.9.8.1 1.5-.4 1.9-.9Z" fill="currentColor"/></svg>';
 				break;
 			case '1password':
+			case 'onepassword':
 				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><rect x="1.5" y="3" width="13" height="10" rx="5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/><path d="M8 8v2.1" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg>';
 				break;
 			case 'lastpass':
@@ -1982,6 +2167,33 @@ class ADVAPAFO_Settings {
 				break;
 			case 'proton-pass':
 				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M3 5.2A2.2 2.2 0 0 1 5.2 3h5.6A2.2 2.2 0 0 1 13 5.2v5.6a2.2 2.2 0 0 1-2.2 2.2H5.2A2.2 2.2 0 0 1 3 10.8V5.2Z" stroke="currentColor" stroke-width="1.4"/><path d="M6 8h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+				break;
+			case 'windows-hello':
+				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><rect x="2" y="2" width="5.2" height="5.2" fill="currentColor"/><rect x="8.8" y="2" width="5.2" height="5.2" fill="currentColor"/><rect x="2" y="8.8" width="5.2" height="5.2" fill="currentColor"/><rect x="8.8" y="8.8" width="5.2" height="5.2" fill="currentColor"/></svg>';
+				break;
+			case 'yubikey':
+				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M5.2 6.1a2.8 2.8 0 1 1 4.9 1.9v2.8a2.1 2.1 0 1 1-4.2 0V8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="4.7" r="0.8" fill="currentColor"/></svg>';
+				break;
+			case 'keeper':
+				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><rect x="2.2" y="2.2" width="11.6" height="11.6" rx="3" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>';
+				break;
+			case 'enpass':
+				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M3 4.2h10v7.6H3z" stroke="currentColor" stroke-width="1.4"/><path d="M6 4.2v-1a2 2 0 1 1 4 0v1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+				break;
+			case 'roboform':
+				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M3 3.5h5.8a2.8 2.8 0 1 1 0 5.6H3V3.5Z" stroke="currentColor" stroke-width="1.4"/><path d="M3 9.1h6.1l3 3.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+				break;
+			case 'unknown-platform':
+				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><rect x="2.2" y="2.2" width="11.6" height="11.6" rx="2.4" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 8h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+				break;
+			case 'unknown-security-key':
+				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><circle cx="5.2" cy="8" r="2" stroke="currentColor" stroke-width="1.4"/><path d="M7.2 8h5.8M10.2 8v1.8M12.2 8v1.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+				break;
+			case 'unknown-cross-device':
+				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><rect x="1.8" y="3" width="7" height="10" rx="1.6" stroke="currentColor" stroke-width="1.3"/><rect x="10" y="4.6" width="4.2" height="7" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M8.8 8h1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+				break;
+			case 'unknown':
+				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4"/><path d="M6.8 6.4a1.2 1.2 0 1 1 2.4 0c0 .8-1.2 1-1.2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.2" r="0.7" fill="currentColor"/></svg>';
 				break;
 			default:
 				break;

@@ -64,7 +64,7 @@
         if (normalized.indexOf("dashlane") !== -1) {
             return "#ea580c";
         }
-        if (normalized.indexOf("bitwarden") !== -1) {
+        if (normalized.indexOf("bitwarden") !== -1 || normalized.indexOf("bitwarded") !== -1) {
             return "#0f766e";
         }
         if (normalized.indexOf("keeper") !== -1) {
