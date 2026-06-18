@@ -30,6 +30,22 @@
     text-decoration: none;
     text-underline-offset: 2px;
 }
+#footer-left {
+    color: #646970;
+}
+#footer-left .advapafo-footer-link {
+    color: #646970;
+    text-decoration: none;
+}
+#footer-left .advapafo-footer-link:hover,
+#footer-left .advapafo-footer-link:focus {
+    color: #3858e9;
+    text-decoration: underline;
+}
+
+#footer-left .advapafo-rating-stars {
+    color: #fbbf24;
+}
 
 #footer-upgrade .advapafo-footer-link__icon {
     width: 14px;
