@@ -90,7 +90,12 @@ class ADVAPAFO_Settings {
 			return $text;
 		}
 
-		return esc_html__( 'Maintained by wppasskey', 'advanced-passkey-login' );
+		return sprintf(
+			'%1$s <a class="advapafo-footer-link" href="%2$s" target="_blank" rel="noopener noreferrer">%3$s <span class="advapafo-rating-stars" aria-hidden="true">&#9733;&#9733;&#9733;&#9733;&#9733;</span></a>! Thank you in advance! 🙌',
+			esc_html__( 'Maintained by wppasskey.', 'advanced-passkey-login' ),
+			esc_url( 'https://wordpress.org/support/plugin/advanced-passkey-login/reviews/#new-post' ),
+			esc_html__( 'Please rate this plugin', 'advanced-passkey-login' )
+		);
 	}
 
 	/**
