@@ -246,6 +246,41 @@
 
     // ── AJAX ────────────────────────────────────────────────────────────────
 
+    function parseJsonPayload(rawText) {
+        try {
+            return JSON.parse(rawText);
+        } catch (e) {
+            // Some hosts can prepend warnings/notices before JSON; recover by slicing object payload.
+            var start = rawText.indexOf('{');
+            var end = rawText.lastIndexOf('}');
+            if (start !== -1 && end !== -1 && end > start) {
+                return JSON.parse(rawText.slice(start, end + 1));
+            }
+            throw e;
+        }
+    }
+
+    async function refreshLoginNonce() {
+        try {
+            var resp = await fetch(window.location.href, {
+                method: 'GET',
+                credentials: 'same-origin',
+                cache: 'no-store',
+            });
+
+            var html = await resp.text();
+            var match = html.match(/"nonce":"([a-f0-9]+)"/i);
+            if (!match || !match[1]) {
+                return false;
+            }
+
+            ADVAPAFOLogin.nonce = match[1];
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
     async function postForm(data) {
         var resp = await fetch(ADVAPAFOLogin.ajaxUrl, {
             method: 'POST',
@@ -257,7 +292,7 @@
         var payload;
 
         try {
-            payload = JSON.parse(rawText);
+            payload = parseJsonPayload(rawText);
         } catch (e) {
             throw new Error('Server returned non-JSON response. Check PHP/server logs and verify admin-ajax.php is reachable.');
         }
@@ -291,7 +326,18 @@
             beginData.append('login', identifier);
         }
 
-        var beginResp = await postForm(beginData);
+        var beginResp;
+        try {
+            beginResp = await postForm(beginData);
+        } catch (e) {
+            // Recover once if a stale login nonce triggered Invalid request.
+            if (e && e.message === 'Invalid request.' && await refreshLoginNonce()) {
+                beginData.set('nonce', ADVAPAFOLogin.nonce);
+                beginResp = await postForm(beginData);
+            } else {
+                throw e;
+            }
+        }
         if (!beginResp || !beginResp.success) {
             throw new Error((beginResp && beginResp.data && beginResp.data.message) || ADVAPAFOLogin.messages.genericError);
         }
