@@ -1,9 +1,9 @@
 <?php return array(
     'root' => array(
-        'name' => 'mbuiux/passkeyflow',
+        'name' => 'mbuiux/advanced-passkey-login',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => 'a9ff7319b0908e8273a756bc4f6857d43733fc4a',
+        'reference' => '0cfa177fe68897e42a56b268342a4f329f472946',
         'type' => 'wordpress-plugin',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -19,10 +19,10 @@
             'aliases' => array(),
             'dev_requirement' => false,
         ),
-        'mbuiux/passkeyflow' => array(
+        'mbuiux/advanced-passkey-login' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => 'a9ff7319b0908e8273a756bc4f6857d43733fc4a',
+            'reference' => '0cfa177fe68897e42a56b268342a4f329f472946',
             'type' => 'wordpress-plugin',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
