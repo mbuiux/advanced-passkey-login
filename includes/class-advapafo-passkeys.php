@@ -554,6 +554,8 @@ class ADVAPAFO_Passkeys {
 	 * Enqueue login-page assets.
 	 */
 	public function enqueue_login_assets(): void {
+		$conditional_ui_enabled = self::is_conditional_ui_enabled();
+
 		wp_enqueue_script(
 			'advapafo-login',
 			ADVAPAFO_PLUGIN_URL . 'admin/js/advapafo-login.js',
@@ -568,6 +570,7 @@ class ADVAPAFO_Passkeys {
 			array(
 				'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
 				'nonce'    => wp_create_nonce( 'advapafo_login' ),
+				'conditionalUi' => $conditional_ui_enabled,
 				'messages' => array(
 					'notSupported' => __( 'Passkeys are unavailable here. Use HTTPS (or localhost) in a passkey-capable browser, or sign in with your password.', 'advanced-passkey-login' ),
 					'genericError' => __( 'Passkey sign-in failed. Please try again or use your password.', 'advanced-passkey-login' ),
@@ -577,6 +580,25 @@ class ADVAPAFO_Passkeys {
 		);
 
 		wp_enqueue_style( 'advapafo-login', ADVAPAFO_PLUGIN_URL . 'admin/css/advapafo-admin.css', array(), ADVAPAFO_VERSION );
+	}
+
+	/**
+	 * Whether Conditional UI (passkey autofill) is enabled.
+	 *
+	 * Developers can force-enable/disable this in wp-config or theme/plugin code:
+	 * add_filter( 'advapafo_enable_conditional_ui', '__return_true' );
+	 *
+	 * @return bool
+	 */
+	public static function is_conditional_ui_enabled(): bool {
+		$enabled = (bool) get_option( 'advapafo_conditional_ui_enabled', false );
+
+		/**
+		 * Filter whether Conditional UI is enabled for wp-login passkey autofill.
+		 *
+		 * @param bool $enabled Current enabled state from plugin settings.
+		 */
+		return (bool) apply_filters( 'advapafo_enable_conditional_ui', $enabled );
 	}
 
 	// ──────────────────────────────────────────────────────────
@@ -1170,30 +1192,32 @@ class ADVAPAFO_Passkeys {
 	 */
 	public function ajax_begin_login(): void {
 		$ip = $this->get_client_ip();
+		$login                  = isset( $_POST['login'] ) ? sanitize_text_field( wp_unslash( $_POST['login'] ) ) : '';
+		$is_usernameless_request = ( '' === $login );
+		$ip_bucket_prefix       = $is_usernameless_request ? 'login_begin_ip_usernameless' : 'login_begin_ip';
 		if ( ! $this->is_post_request() ) {
-			$this->record_failure( 'login_begin_ip', $ip );
+			$this->record_failure( $ip_bucket_prefix, $ip );
 			wp_send_json_error( array( 'message' => 'Invalid request method.' ), 405 );
 		}
 
-		if ( $this->is_locked_out( 'login_begin_ip', $ip ) ) {
+		if ( $this->is_locked_out( $ip_bucket_prefix, $ip ) ) {
 			$this->log_event( 'login_rate_limited', array( 'ip' => $ip ) );
 			wp_send_json_error( array( 'message' => 'Too many attempts. Please wait and try again.' ), 429 );
 		}
 
 		if ( ! $this->is_secure_context() ) {
-			$this->record_failure( 'login_begin_ip', $ip );
+			$this->record_failure( $ip_bucket_prefix, $ip );
 			wp_send_json_error( array( 'message' => 'Passkeys require HTTPS.' ), 400 );
 		}
 
 		if ( ! check_ajax_referer( 'advapafo_login', 'nonce', false ) ) {
-			$this->record_failure( 'login_begin_ip', $ip );
+			$this->record_failure( $ip_bucket_prefix, $ip );
 			wp_send_json_error( array( 'message' => 'Invalid request.' ), 403 );
 		}
 
-		$login       = isset( $_POST['login'] ) ? sanitize_text_field( wp_unslash( $_POST['login'] ) ) : '';
 		$generic_err = 'Passkey sign-in could not be started. Please try again.';
 		if ( '' !== $login && ! $this->is_valid_login_identifier( $login ) ) {
-			$this->record_failure( 'login_begin_ip', $ip );
+			$this->record_failure( $ip_bucket_prefix, $ip );
 			wp_send_json_error( array( 'message' => $generic_err ), 400 );
 		}
 
@@ -1212,14 +1236,14 @@ class ADVAPAFO_Passkeys {
 
 			$user = $this->resolve_user( $login );
 			if ( ! $user || ! $this->is_eligible_user( $user ) ) {
-				$this->record_failure( 'login_begin_ip', $ip );
+				$this->record_failure( $ip_bucket_prefix, $ip );
 				$this->record_failure( 'login_begin_acct', $login_key );
 				wp_send_json_error( array( 'message' => $generic_err ), 400 );
 			}
 
 			$cred_rows = $this->get_user_credentials( (int) $user->ID );
 			if ( empty( $cred_rows ) ) {
-				$this->record_failure( 'login_begin_ip', $ip );
+				$this->record_failure( $ip_bucket_prefix, $ip );
 				$this->record_failure( 'login_begin_acct', $login_key );
 				wp_send_json_error( array( 'message' => $generic_err ), 400 );
 			}
@@ -1230,29 +1254,62 @@ class ADVAPAFO_Passkeys {
 		try {
 			$web_authn = $this->new_webauthn();
 			$cred_ids  = array_map( fn( $r ) => $this->decode_b64url( $r->credential_id ), $cred_rows );
+			$ttl       = $this->get_login_challenge_ttl();
+			$challenge_binary = '';
 
-			$get_args = $web_authn->getGetArgs(
-				$cred_ids,
-				$this->get_login_challenge_ttl(),
-				true,
-				true,
-				true,
-				true,
-				true,
-				$this->get_user_verification()
-			);
+			try {
+				$get_args = $web_authn->getGetArgs(
+					$cred_ids,
+					$ttl,
+					true,
+					true,
+					true,
+					true,
+					true,
+					$this->get_user_verification()
+				);
+				$challenge_binary = $web_authn->getChallenge()->getBinaryString();
+			} catch ( \Throwable $options_error ) {
+				if ( ! $is_usernameless_request ) {
+					throw $options_error;
+				}
+
+				// Fallback for usernameless/Conditional UI when upstream option builders are unavailable.
+				$challenge_binary = random_bytes( 32 );
+				$get_args         = array(
+					'publicKey' => array(
+						'timeout'          => $ttl * 1000,
+						'challenge'        => $this->encode_b64url( $challenge_binary ),
+						'userVerification' => $this->get_user_verification(),
+						'rpId'             => $this->get_rp_id(),
+						'allowCredentials' => array(),
+					),
+				);
+			}
+
+			if ( $is_usernameless_request ) {
+				if ( is_object( $get_args ) && isset( $get_args->publicKey ) && is_object( $get_args->publicKey ) ) {
+					$get_args->publicKey->allowCredentials = array();
+				} elseif ( is_array( $get_args ) && isset( $get_args['publicKey'] ) && is_array( $get_args['publicKey'] ) ) {
+					$get_args['publicKey']['allowCredentials'] = array();
+				}
+			}
+
+			if ( ! is_string( $challenge_binary ) || '' === $challenge_binary ) {
+				throw new \RuntimeException( 'Empty WebAuthn challenge.' );
+			}
 
 			$token = wp_generate_password( 32, false, false );
 			set_transient(
 				'advapafo_login_' . $token,
 				array(
 					'user_id'   => $state_uid,
-					'challenge' => base64_encode( $web_authn->getChallenge()->getBinaryString() ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- WebAuthn challenge binary is stored in transient-safe format.
+					'challenge' => base64_encode( $challenge_binary ), // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- WebAuthn challenge binary is stored in transient-safe format.
 				),
-				$this->get_login_challenge_ttl()
+				$ttl
 			);
 
-			$this->clear_failures( 'login_begin_ip', $ip );
+			$this->clear_failures( $ip_bucket_prefix, $ip );
 			if ( '' !== $login_key ) {
 				$this->clear_failures( 'login_begin_acct', $login_key );
 			}
@@ -1265,7 +1322,7 @@ class ADVAPAFO_Passkeys {
 			);
 
 		} catch ( \Throwable $e ) {
-			$this->record_failure( 'login_begin_ip', $ip );
+			$this->record_failure( $ip_bucket_prefix, $ip );
 			if ( '' !== $login_key ) {
 				$this->record_failure( 'login_begin_acct', $login_key );
 			}

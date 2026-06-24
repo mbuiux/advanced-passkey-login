@@ -26,6 +26,165 @@ define( 'ADVAPAFO_PLUGIN_FILE', __FILE__ );
 define( 'ADVAPAFO_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ADVAPAFO_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
+if ( ! function_exists( 'advapafo_template_render_scope' ) ) {
+	/**
+	 * Include a template file in isolated variable scope.
+	 *
+	 * @param string               $__template_path Absolute template path.
+	 * @param array<string, mixed> $__args          Variables to expose to template.
+	 */
+	function advapafo_template_render_scope( string $__template_path, array $__args = array() ): void {
+		if ( ! empty( $__args ) ) {
+			extract( $__args, EXTR_SKIP ); // phpcs:ignore WordPress.PHP.DontExtract.extract_extract -- template views intentionally receive arg keys as local variables.
+		}
+
+		include $__template_path;
+	}
+}
+
+if ( ! function_exists( 'advapafo_is_template_name_safe' ) ) {
+	/**
+	 * Validate relative template name and guard against traversal.
+	 *
+	 * @param string $template_name Relative template path.
+	 * @return bool
+	 */
+	function advapafo_is_template_name_safe( string $template_name ): bool {
+		if ( '' === $template_name ) {
+			return false;
+		}
+
+		$normalized = wp_normalize_path( trim( $template_name ) );
+		if ( '' === $normalized ) {
+			return false;
+		}
+
+		if ( str_starts_with( $normalized, '/' ) || str_starts_with( $normalized, '\\' ) ) {
+			return false;
+		}
+
+		if ( preg_match( '#(^|/|\\\\)\.\.($|/|\\\\)#', $normalized ) ) {
+			return false;
+		}
+
+		if ( str_contains( $normalized, "\0" ) ) {
+			return false;
+		}
+
+		return true;
+	}
+}
+
+if ( ! function_exists( 'advapafo_is_template_path_allowed' ) ) {
+	/**
+	 * Ensure a resolved template path stays within known allowed roots.
+	 *
+	 * @param string              $resolved_path Absolute template path.
+	 * @param array<int, string>  $allowed_roots Allowed absolute root directories.
+	 * @return bool
+	 */
+	function advapafo_is_template_path_allowed( string $resolved_path, array $allowed_roots ): bool {
+		$real_file = realpath( $resolved_path ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_realpath -- realpath is required to validate canonical include paths.
+		if ( false === $real_file ) {
+			return false;
+		}
+
+		$real_file = wp_normalize_path( $real_file );
+
+		foreach ( $allowed_roots as $root ) {
+			$real_root = realpath( $root ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_realpath -- canonical path comparison for traversal protection.
+			if ( false === $real_root ) {
+				continue;
+			}
+
+			$real_root = wp_normalize_path( $real_root );
+			if ( str_starts_with( $real_file, trailingslashit( $real_root ) ) || $real_file === $real_root ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
+if ( ! function_exists( 'advapafo_get_template' ) ) {
+	/**
+	 * Locate and render a plugin template with child/parent theme overrides.
+	 *
+	 * Search order:
+	 * 1) Child theme: /advanced-passkeys/{template}
+	 * 2) Parent theme: /advanced-passkeys/{template}
+	 * 3) Plugin fallback: /templates/{template}
+	 *
+	 * @param string               $template_name Relative template path (e.g. login/button.php).
+	 * @param array<string, mixed> $args          Optional variables available in the template scope.
+	 * @return string Absolute resolved template path, or empty string when not found/invalid.
+	 */
+	function advapafo_get_template( $template_name, $args = array() ) {
+		$template_name = is_string( $template_name ) ? wp_normalize_path( trim( $template_name ) ) : '';
+		$args          = is_array( $args ) ? $args : array();
+
+		/**
+		 * Filter template request context before template resolution.
+		 *
+		 * @param array{template_name:string,args:array<string,mixed>,theme_root:string,plugin_root:string} $context Template context.
+		 */
+		$context = apply_filters(
+			'advanced_passkeys_get_template_part',
+			array(
+				'template_name' => $template_name,
+				'args'          => $args,
+				'theme_root'    => 'advanced-passkeys',
+				'plugin_root'   => trailingslashit( ADVAPAFO_PLUGIN_DIR ) . 'templates',
+			)
+		);
+
+		if ( ! is_array( $context ) ) {
+			return '';
+		}
+
+		$template_name = isset( $context['template_name'] ) && is_string( $context['template_name'] )
+			? wp_normalize_path( trim( $context['template_name'] ) )
+			: '';
+		$args          = isset( $context['args'] ) && is_array( $context['args'] ) ? $context['args'] : array();
+		$theme_root    = isset( $context['theme_root'] ) && is_string( $context['theme_root'] ) && '' !== trim( $context['theme_root'] )
+			? trim( $context['theme_root'], '/\\' )
+			: 'advanced-passkeys';
+		$plugin_root   = isset( $context['plugin_root'] ) && is_string( $context['plugin_root'] ) && '' !== trim( $context['plugin_root'] )
+			? wp_normalize_path( untrailingslashit( trim( $context['plugin_root'] ) ) )
+			: wp_normalize_path( untrailingslashit( trailingslashit( ADVAPAFO_PLUGIN_DIR ) . 'templates' ) );
+
+		if ( ! advapafo_is_template_name_safe( $template_name ) ) {
+			return '';
+		}
+
+		$relative_theme_path = trailingslashit( $theme_root ) . ltrim( $template_name, '/\\' );
+		$located_template    = locate_template( array( $relative_theme_path ), false, false );
+
+		if ( ! is_string( $located_template ) || '' === $located_template ) {
+			$located_template = wp_normalize_path( trailingslashit( $plugin_root ) . ltrim( $template_name, '/\\' ) );
+		}
+
+		if ( ! is_string( $located_template ) || '' === $located_template || ! file_exists( $located_template ) ) {
+			return '';
+		}
+
+		$allowed_roots = array(
+			get_stylesheet_directory() . '/' . $theme_root,
+			get_template_directory() . '/' . $theme_root,
+			$plugin_root,
+		);
+
+		if ( ! advapafo_is_template_path_allowed( $located_template, $allowed_roots ) ) {
+			return '';
+		}
+
+		advapafo_template_render_scope( $located_template, $args );
+
+		return $located_template;
+	}
+}
+
 // Allow env-based constant injection (same pattern used in planning-center-sso).
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.VariableConstantNameFound -- dynamic constant names are constrained to ADVAPAFO_* entries in this allowlist.
 foreach ( array(

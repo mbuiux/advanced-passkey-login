@@ -20,6 +20,29 @@ class ADVAPAFO_Login_Form {
 
 	public function __construct() {
 		add_action( 'login_form', array( $this, 'render_passkey_button' ) );
+		add_action( 'login_enqueue_scripts', array( $this, 'inject_username_webauthn_autocomplete' ) );
+	}
+
+	/**
+	 * Ensure wp-login username field advertises passkey autofill eligibility.
+	 */
+	public function inject_username_webauthn_autocomplete(): void {
+		$conditional_enabled = class_exists( 'ADVAPAFO_Passkeys' ) && method_exists( 'ADVAPAFO_Passkeys', 'is_conditional_ui_enabled' )
+			? ADVAPAFO_Passkeys::is_conditional_ui_enabled()
+			: false;
+
+		if ( ! $conditional_enabled ) {
+			return;
+		}
+
+		$autocomplete_value = (string) apply_filters( 'advapafo_username_autocomplete_value', 'username webauthn' );
+
+		wp_register_script( 'advapafo-login-username-autocomplete', false, array(), defined( 'ADVAPAFO_VERSION' ) ? ADVAPAFO_VERSION : '1.0.0', true );
+		wp_enqueue_script( 'advapafo-login-username-autocomplete' );
+		wp_add_inline_script(
+			'advapafo-login-username-autocomplete',
+			'(function(){function applyAutocomplete(){var input=document.getElementById("user_login");if(!input){return;}var desired=' . wp_json_encode( $autocomplete_value ) . ';if(!desired){return;}input.setAttribute("autocomplete",desired);}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",applyAutocomplete);return;}applyAutocomplete();})();'
+		);
 	}
 
 	/**
@@ -36,21 +59,43 @@ class ADVAPAFO_Login_Form {
 		}
 
 		$show_sep      = (int) get_option( 'advapafo_show_separator', 1 ) === 1;
+		$conditional_enabled = class_exists( 'ADVAPAFO_Passkeys' ) && method_exists( 'ADVAPAFO_Passkeys', 'is_conditional_ui_enabled' )
+			? ADVAPAFO_Passkeys::is_conditional_ui_enabled()
+			: false;
+		if ( $conditional_enabled ) {
+			$show_sep = false;
+		}
 		$style_classes = $this->get_button_style_class();
+
+		if ( function_exists( 'advapafo_get_template' ) ) {
+			$resolved = advapafo_get_template(
+				'login/button.php',
+				array(
+					'show_sep'            => $show_sep,
+					'conditional_enabled' => $conditional_enabled,
+					'style_classes'       => $style_classes,
+				)
+			);
+
+			if ( is_string( $resolved ) && '' !== $resolved ) {
+				return;
+			}
+		}
 
 		?>
 
-		<div id="advapafo-login-passkey-block">
+		<div id="advapafo-login-passkey-block" class="<?php echo esc_attr( $conditional_enabled ? 'advapafo-login-passkey-block--conditional-only' : '' ); ?>">
 			<?php if ( $show_sep ) : ?>
 			<div class="advapafo-login-separator" role="separator" aria-label="<?php esc_attr_e( 'or', 'advanced-passkey-login' ); ?>">
 				<span><?php esc_html_e( 'OR', 'advanced-passkey-login' ); ?></span>
 			</div>
 			<?php endif; ?>
 
-			<div class="<?php echo esc_attr( 'advapafo-login-passkey-wrap' . ( $show_sep ? '' : ' advapafo-no-separator' ) ); ?>">
+			<div class="<?php echo esc_attr( 'advapafo-login-passkey-wrap' . ( $show_sep ? '' : ' advapafo-no-separator' ) . ( $conditional_enabled ? ' advapafo-login-passkey-wrap--conditional-only' : '' ) ); ?>">
 				<button type="button"
 						id="advapafo-signin-passkey"
-						class="button button-large advapafo-passkey-btn <?php echo esc_attr( $style_classes ); ?>"
+						class="button button-large advapafo-passkey-btn <?php echo esc_attr( $style_classes . ( $conditional_enabled ? ' advapafo-passkey-btn--hidden' : '' ) ); ?>"
+						<?php echo $conditional_enabled ? 'hidden' : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static attribute literal. ?>
 						aria-label="<?php esc_attr_e( 'Sign in with a passkey (Face ID, Touch ID, or security key)', 'advanced-passkey-login' ); ?>">
 					<span class="advapafo-passkey-icon" aria-hidden="true">
 						<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

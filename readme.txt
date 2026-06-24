@@ -29,8 +29,10 @@ Unlike basic alternatives, this plugin features intelligent, dependency-aware in
 == Features ==
 
 * **One-Click Passwordless Auth:** Adds a native "Sign in with Passkey" button directly to the WordPress login screen.
+* **Conditional UI Autofill:** Optional browser-native passkey autofill prompts on `wp-login.php` when username is focused.
 * **Ecosystem Integrations:** Built-in aware modules, blocks, and shortcodes for WooCommerce, MemberPress, LearnDash, BuddyBoss, and more.
 * **Gutenberg Blocks & Shortcodes:** Automatically registers custom login cards and shortcodes based on active plugins.
+* **Theme Template Overrides:** Override the login button template via `/advanced-passkeys/login/button.php` in your active theme.
 * **Admin Dashboard Overview:** Keep track of credential performance with an Authenticator Overview card and Last Login activity logs.
 * **Granular Role Controls:** Easily configure exactly which user roles are permitted to use passkey authentication (Default: Administrators).
 * **Brute-Force Rate Limiting:** Hardened local security with built-in login rate-limiting and automated daily log cleanups.
@@ -130,6 +132,34 @@ Yes. Database tables partition dynamically per site via `$wpdb->prefix`. Network
 = Can I use a custom RP ID for subdomain setups? =
 
 Yes. Simply add `define( 'ADVAPAFO_RP_ID', 'example.com' );` directly into your site's `wp-config.php` file.
+
+= Can I override the login button template in my theme? =
+
+Yes. Copy the plugin template file to your active theme override directory:
+
+`/wp-content/themes/your-child-theme/advanced-passkeys/login/button.php`
+
+or in a parent theme:
+
+`/wp-content/themes/your-parent-theme/advanced-passkeys/login/button.php`
+
+Minimal override header example:
+
+`<?php`
+`/**`
+` * Advanced Passkeys template override: login button.`
+` * /wp-content/themes/your-child-theme/advanced-passkeys/login/button.php`
+` */`
+`if ( ! defined( 'ABSPATH' ) ) { exit; }`
+
+= What happens when Conditional UI is enabled? =
+
+When enabled in Settings > Advanced:
+
+* Browser-supported passkey autofill can appear on the username field.
+* The manual "Sign in with Passkey" button is hidden on `wp-login.php`.
+* The login OR separator is automatically disabled.
+* Password fallback remains available.
 
 == Developer Hooks: Last Used Pill ==
 

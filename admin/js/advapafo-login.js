@@ -188,6 +188,20 @@
         return node ? (node.value || '').trim() : '';
     }
 
+    function applyUsernameWebauthnAutocomplete() {
+        var node = document.getElementById('user_login');
+        if (!node) {
+            return;
+        }
+
+        var current = (node.getAttribute('autocomplete') || '').trim();
+        if (current.toLowerCase() === 'username webauthn') {
+            return;
+        }
+
+        node.setAttribute('autocomplete', 'username webauthn');
+    }
+
     function getRedirectTarget() {
         var redirectNode = document.getElementById('redirect_to');
         if (!redirectNode) {
@@ -312,16 +326,11 @@
         return postForm(data);
     }
 
-    // ── Sign-in flow ─────────────────────────────────────────────────────────
-
-    async function signInWithPasskey(btn) {
-        setMessage(btn, '');
-
+    async function beginLoginRequest(identifier) {
         var beginData = new FormData();
         beginData.append('action', 'advapafo_begin_login');
         beginData.append('nonce',  ADVAPAFOLogin.nonce);
 
-        var identifier = getLoginIdentifier();
         if (identifier) {
             beginData.append('login', identifier);
         }
@@ -338,17 +347,19 @@
                 throw e;
             }
         }
-        if (!beginResp || !beginResp.success) {
+
+        if (!beginResp || !beginResp.success || !beginResp.data || !beginResp.data.options || !beginResp.data.token) {
             throw new Error((beginResp && beginResp.data && beginResp.data.message) || ADVAPAFOLogin.messages.genericError);
         }
 
-        var options    = hydrateGetOptions(beginResp.data.options);
-        var credential = await navigator.credentials.get(options);
+        return beginResp;
+    }
 
+    async function finishLoginRequest(credential, token) {
         var finishData = new FormData();
         finishData.append('action',            'advapafo_finish_login');
         finishData.append('nonce',             ADVAPAFOLogin.nonce);
-        finishData.append('token',             beginResp.data.token);
+        finishData.append('token',             token);
         finishData.append('id',                bufferToB64url(credential.rawId));
         finishData.append('clientDataJSON',    bufferToB64url(credential.response.clientDataJSON));
         finishData.append('authenticatorData', bufferToB64url(credential.response.authenticatorData));
@@ -369,8 +380,21 @@
         }
 
         markLocalLastUsedNow();
+        return finishResp.data.redirect;
+    }
 
-        var redirectUrl = finishResp.data.redirect;
+    // ── Sign-in flow ─────────────────────────────────────────────────────────
+
+    async function signInWithPasskey(btn) {
+        setMessage(btn, '');
+
+        var identifier = getLoginIdentifier();
+        var beginResp = await beginLoginRequest(identifier);
+
+        var options    = hydrateGetOptions(beginResp.data.options);
+        var credential = await navigator.credentials.get(options);
+
+        var redirectUrl = await finishLoginRequest(credential, beginResp.data.token);
         try {
             var parsed = new URL(redirectUrl, window.location.origin);
             if (parsed.origin !== window.location.origin) {
@@ -385,13 +409,19 @@
     // ── Init ────────────────────────────────────────────────────────────────
 
     function init() {
+        applyUsernameWebauthnAutocomplete();
         relocateLoginPasskeyBlock();
 
         var buttons = Array.prototype.slice.call(document.querySelectorAll('#advapafo-signin-passkey, [data-advapafo-passkey-login-btn="1"]'));
         if (!buttons.length) return;
         var loginNode = document.getElementById('user_login');
+        var passwordNode = document.getElementById('user_pass');
+        var submitNode = document.getElementById('wp-submit');
+        var loginForm = document.getElementById('loginform');
         var lastLookupRequestId = 0;
         var lookupTimer = 0;
+        var conditionalController = null;
+        var conditionalFlowActive = false;
 
         // Graceful degradation for unsupported browsers
         if (!window.PublicKeyCredential || !navigator.credentials || !navigator.credentials.get) {
@@ -467,20 +497,122 @@
         window.setTimeout(updateLastUsedPill, 400);
         window.setTimeout(updateLastUsedPill, 1400);
 
-        // Optional: auto-trigger discoverable credential prompt on page load
-        // (usernameless passkey sign-in — the credential chooser appears immediately).
-        // This is disabled by default to keep the UX consistent with existing flows.
-        // Uncomment to enable:
-        //
-        // if (window.PublicKeyCredential.isConditionalMediationAvailable) {
-        //     window.PublicKeyCredential.isConditionalMediationAvailable().then(function (available) {
-        //         if (available) signInWithPasskey().catch(function () {});
-        //     });
-        // }
+        function abortConditionalMediation() {
+            if (conditionalController) {
+                try {
+                    conditionalController.abort();
+                } catch (e) {
+                    // No-op.
+                }
+                conditionalController = null;
+            }
+        }
+
+        async function maybeStartConditionalUi(primaryBtn) {
+            var conditionalUiEnabled = !!ADVAPAFOLogin.conditionalUi;
+            if (!conditionalUiEnabled || !loginForm || !document.body || !document.body.classList.contains('login')) {
+                return;
+            }
+
+            if (!window.PublicKeyCredential || !navigator.credentials || !navigator.credentials.get) {
+                return;
+            }
+
+            if (typeof window.PublicKeyCredential.isConditionalMediationAvailable !== 'function') {
+                return;
+            }
+
+            if (conditionalFlowActive) {
+                return;
+            }
+
+            var mediationAvailable = false;
+            try {
+                mediationAvailable = await window.PublicKeyCredential.isConditionalMediationAvailable();
+            } catch (e) {
+                mediationAvailable = false;
+            }
+
+            if (!mediationAvailable) {
+                return;
+            }
+
+            conditionalFlowActive = true;
+            try {
+                var beginResp = await beginLoginRequest('');
+                var options = hydrateGetOptions(beginResp.data.options);
+                if (!options.publicKey || typeof options.publicKey !== 'object') {
+                    return;
+                }
+
+                // Conditional UI relies on discoverable credentials only.
+                options.publicKey.allowCredentials = [];
+
+                conditionalController = typeof window.AbortController === 'function' ? new window.AbortController() : null;
+
+                var credentialRequest = {
+                    publicKey: options.publicKey,
+                    mediation: 'conditional',
+                };
+
+                if (conditionalController) {
+                    credentialRequest.signal = conditionalController.signal;
+                }
+
+                var credential = await navigator.credentials.get(credentialRequest);
+                if (!credential) {
+                    return;
+                }
+
+                setButtonState(primaryBtn, true);
+                var redirectUrl = await finishLoginRequest(credential, beginResp.data.token);
+                var parsed = new URL(redirectUrl, window.location.origin);
+                if (parsed.origin !== window.location.origin) {
+                    throw new Error('Unexpected redirect origin');
+                }
+                window.location.href = parsed.href;
+            } catch (err) {
+                if (err && (err.name === 'AbortError' || err.name === 'NotAllowedError')) {
+                    return;
+                }
+                // Keep manual passkey and password paths available on background failures.
+            } finally {
+                conditionalFlowActive = false;
+                conditionalController = null;
+                setButtonState(primaryBtn, false);
+            }
+        }
+
+        if (passwordNode) {
+            passwordNode.addEventListener('focus', abortConditionalMediation);
+            passwordNode.addEventListener('input', abortConditionalMediation);
+            passwordNode.addEventListener('keydown', abortConditionalMediation);
+        }
+
+        if (submitNode) {
+            submitNode.addEventListener('click', abortConditionalMediation);
+        }
+
+        if (loginForm) {
+            loginForm.addEventListener('submit', abortConditionalMediation, true);
+        }
+
+        maybeStartConditionalUi(buttons[0]);
+
+        if (loginNode) {
+            loginNode.addEventListener('focus', function () {
+                maybeStartConditionalUi(buttons[0]);
+            });
+
+            loginNode.addEventListener('click', function () {
+                maybeStartConditionalUi(buttons[0]);
+            });
+        }
 
         buttons.forEach(function (btn) {
             btn.addEventListener('click', function (e) {
                 e.preventDefault();
+                abortConditionalMediation();
                 setButtonState(btn, true);
                 signInWithPasskey(btn)
                     .catch(function (err) {
