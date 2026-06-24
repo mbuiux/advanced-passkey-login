@@ -3,7 +3,7 @@ Contributors: wppasskey, mbuiux
 Tags: passkeys, webauthn, passwordless, login, security
 Requires at least: 6.0
 Tested up to: 7.0
-Stable tag: 1.1.9
+Stable tag: 1.1.10
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -214,6 +214,11 @@ Developers can use these filters inside a theme or functionality plugin to globa
 
 == Changelog ==
 
+= 1.1.10 =
+* Fixed: conditional UI login elements now remain hidden consistently when conditional UI is enabled.
+* Improved: authenticator provider reporting resolves legacy credential/log payload variants more reliably.
+* Improved: registration errors now show friendlier passkey guidance for browser invalid-state failures.
+
 = 1.1.9 =
 * Improved: admin footer link styling and rating stars visibility for the settings screen.
 
@@ -267,6 +272,9 @@ Developers can use these filters inside a theme or functionality plugin to globa
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.1.10 =
+Recommended update: improves conditional UI consistency, legacy authenticator mapping reliability, and registration error clarity.
 
 = 1.1.9 =
 Recommended update: refines admin footer link/rating styles for better settings-page visibility.
