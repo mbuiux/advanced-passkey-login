@@ -138,6 +138,26 @@ This command regenerates:
 
 The plugin reads this local file at runtime and does not fetch remote data during authentication.
 
+## Build Test ZIP (No Deploy)
+
+Use this to package the latest plugin code into an installable ZIP for testing on other WordPress installs without deploying to WordPress.org.
+
+Local command:
+
+```bash
+npm run package:zip
+```
+
+Output:
+
+- `dist/advanced-passkey-login-<version>-<timestamp>.zip`
+
+GitHub Actions (manual):
+
+- Run workflow: `Package Plugin ZIP`
+- It uploads an artifact named `plugin-zip`
+- This workflow does **not** deploy to WordPress.org
+
 ### From source (development)
 
 ```bash

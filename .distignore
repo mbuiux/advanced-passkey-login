@@ -12,6 +12,7 @@ playwright.config.ts
 playwright-report/
 test-results/
 tests/
+scripts/
 
 # Build configs
 webpack.config.js
