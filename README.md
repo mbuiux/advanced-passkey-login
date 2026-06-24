@@ -31,7 +31,13 @@ Users register a passkey just once using their device's built-in biometric senso
 - Passkey registration and authentication via the **WebAuthn Level 2** specification.
 - Seamless compatibility with **Face ID, Touch ID, Windows Hello, Android biometrics, YubiKey**, and any FIDO2 authenticator.
 - Drop-in passkey button on `wp-login.php` — no template edits or code snippets required.
+- Optional **Conditional UI passkey autofill** on `wp-login.php` (browser-supported) for native username-field passkey suggestions.
 - Passkey configuration right from the native **WordPress User Profile** (rename, revoke, capacity indicator).
+
+### 🧩 Theme Overrides
+- Native template override engine for plugin views using a Woo/EDD-style path hierarchy.
+- Override-ready login button template at `templates/login/button.php`.
+- Theme override path: `wp-content/themes/{your-active-theme}/advanced-passkeys/login/button.php`
 
 ### 🔌 Intelligent Ecosystem Integrations
 Built-in aware modules, Gutenberg blocks, and shortcodes that auto-inject into popular platforms when active:
@@ -74,6 +80,63 @@ Built-in aware modules, Gutenberg blocks, and shortcodes that auto-inject into p
 3. Go to **Settings → Advanced Passkeys for Secure Login** and enable passkeys.
 4. Visit **Your Profile** and register your first passkey.
 5. Sign out and click **Sign in with Passkey** on the login page.
+
+## Template Overrides
+
+Theme developers can override plugin templates by copying files into:
+
+`/wp-content/themes/{child-or-parent-theme}/advanced-passkeys/`
+
+Current starter template:
+
+- `login/button.php`
+
+Minimal override file header example:
+
+```php
+<?php
+/**
+ * Advanced Passkeys template override: login button.
+ *
+ * Place in:
+ * /wp-content/themes/your-child-theme/advanced-passkeys/login/button.php
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+// Template args provided by plugin:
+// $show_sep (bool), $conditional_enabled (bool), $style_classes (string)
+```
+
+## Conditional UI (Passkey Autofill)
+
+When enabled in **Settings → Advanced → Enable passkey autofill (Conditional UI)**:
+
+- Browsers that support Conditional UI can show passkeys in the native username autofill flow.
+- The manual `Sign in with Passkey` button on `wp-login.php` is hidden.
+- The login OR separator is automatically disabled to avoid duplicate prompts.
+- Password fallback remains available.
+
+## AAGUID Mapping Sync
+
+Provider detection uses a local generated snapshot from:
+
+- `https://github.com/passkeydeveloper/passkey-authenticator-aaguids`
+
+To refresh AAGUID to provider mappings:
+
+```bash
+npm run sync:aaguid-map
+```
+
+This command regenerates:
+
+- `includes/data/aaguid-provider-map.php`
+- `includes/data/provider-icon-map.php`
+
+The plugin reads this local file at runtime and does not fetch remote data during authentication.
 
 ### From source (development)
 

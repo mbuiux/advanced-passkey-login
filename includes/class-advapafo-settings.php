@@ -322,8 +322,18 @@ class ADVAPAFO_Settings {
 			'advapafo_show_separator',
 			array(
 				'type'              => 'boolean',
-				'sanitize_callback' => array( $this, 'sanitize_checkbox' ),
+				'sanitize_callback' => array( $this, 'sanitize_show_separator' ),
 				'default'           => true,
+			)
+		);
+
+		register_setting(
+			$this->option_group,
+			'advapafo_conditional_ui_enabled',
+			array(
+				'type'              => 'boolean',
+				'sanitize_callback' => array( $this, 'sanitize_checkbox' ),
+				'default'           => false,
 			)
 		);
 
@@ -792,6 +802,7 @@ class ADVAPAFO_Settings {
 
 		if ( 'settings' === $active_tab ) {
 			$show_separator             = (bool) get_option( 'advapafo_show_separator', true );
+			$conditional_ui_enabled     = (bool) get_option( 'advapafo_conditional_ui_enabled', false );
 			$button_style               = get_option( 'advapafo_button_style', 'black' );
 			$rp_name                    = get_option( 'advapafo_rp_name', '' );
 			$rp_id                      = get_option( 'advapafo_rp_id', '' );
@@ -802,6 +813,7 @@ class ADVAPAFO_Settings {
 			$lockout                    = absint( get_option( 'advapafo_rate_limit_lockout', 900 ) );
 
 			echo '<input type="hidden" name="advapafo_show_separator" value="' . esc_attr( $show_separator ? '1' : '0' ) . '" />';
+			echo '<input type="hidden" name="advapafo_conditional_ui_enabled" value="' . esc_attr( $conditional_ui_enabled ? '1' : '0' ) . '" />';
 			echo '<input type="hidden" name="advapafo_button_style" value="' . esc_attr( (string) $button_style ) . '" />';
 			echo '<input type="hidden" name="advapafo_rp_name" value="' . esc_attr( (string) $rp_name ) . '" />';
 			echo '<input type="hidden" name="advapafo_rp_id" value="' . esc_attr( (string) $rp_id ) . '" />';
@@ -1151,7 +1163,7 @@ class ADVAPAFO_Settings {
 								<?php foreach ( $authenticator_rows as $row ) : ?>
 									<li>
 										<div>
-											<?php echo wp_kses( $this->render_authenticator_provider_badge( (string) $row['provider'], array( 'provider_key' => (string) ( $row['provider_key'] ?? '' ) ) ), $this->get_authenticator_provider_badge_allowed_html() ); ?>
+											<?php echo $this->render_authenticator_provider_badge( (string) $row['provider'], array( 'provider_key' => (string) ( $row['provider_key'] ?? '' ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_authenticator_provider_badge() returns fully escaped, internally-controlled markup. ?>
 											<span class="wpkpro-dashboard-auth-total"><?php echo esc_html( number_format_i18n( (int) $row['total'] ) ); ?></span>
 										</div>
 									</li>
@@ -1264,7 +1276,7 @@ class ADVAPAFO_Settings {
 													<?php if ( '—' === $authenticator ) : ?>
 														&mdash;
 													<?php else : ?>
-														<?php echo wp_kses( $this->render_authenticator_provider_badge( $authenticator, array( 'provider_key' => $authenticator_key ) ), $this->get_authenticator_provider_badge_allowed_html() ); ?>
+														<?php echo $this->render_authenticator_provider_badge( $authenticator, array( 'provider_key' => $authenticator_key ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- render_authenticator_provider_badge() returns fully escaped, internally-controlled markup. ?>
 													<?php endif; ?>
 												</span>
 												<span class="wpkpro-dashboard-activity-time"><?php echo esc_html( $timestamp_display ); ?><?php echo '' !== $timestamp_relative ? esc_html( ' | ' . $timestamp_relative ) : ''; ?></span>
@@ -1879,6 +1891,115 @@ class ADVAPAFO_Settings {
 	}
 
 	/**
+	 * Get default AAGUID-to-provider mappings from generated data file.
+	 *
+	 * @return array<string,string>
+	 */
+	private function get_default_authenticator_aaguid_map(): array {
+		static $cached_map = null;
+		if ( is_array( $cached_map ) ) {
+			return $cached_map;
+		}
+
+		$defaults = array(
+			'08987058-cadc-4b81-b6e1-30de50dcbe96' => 'Windows Hello',
+			'2fc0579f-8113-47ea-b116-bb5a8db9202a' => 'YubiKey',
+		);
+
+		$map_file = ADVAPAFO_PLUGIN_DIR . 'includes/data/aaguid-provider-map.php';
+		if ( ! is_string( $map_file ) || '' === $map_file || ! file_exists( $map_file ) ) {
+			$cached_map = $defaults;
+
+			return $cached_map;
+		}
+
+		$loaded = require $map_file; // phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable -- local plugin path and static filename.
+		if ( ! is_array( $loaded ) ) {
+			$cached_map = $defaults;
+
+			return $cached_map;
+		}
+
+		$normalized = array();
+		foreach ( $loaded as $aaguid => $provider ) {
+			$key   = $this->normalize_authenticator_aaguid( (string) $aaguid );
+			$name  = trim( (string) $provider );
+			if ( '' === $key || '' === $name ) {
+				continue;
+			}
+
+			$normalized[ $key ] = sanitize_text_field( $name );
+		}
+
+		if ( empty( $normalized ) ) {
+			$cached_map = $defaults;
+
+			return $cached_map;
+		}
+
+		$cached_map = array_merge( $defaults, $normalized );
+
+		return $cached_map;
+	}
+
+	/**
+	 * Get provider-key icon assets generated from upstream AAGUID JSON.
+	 *
+	 * @return array<string,array{icon_light:string,icon_dark:string}>
+	 */
+	private function get_authenticator_provider_icon_asset_map(): array {
+		static $cached_map = null;
+		if ( is_array( $cached_map ) ) {
+			return $cached_map;
+		}
+
+		$map_file = ADVAPAFO_PLUGIN_DIR . 'includes/data/provider-icon-map.php';
+		if ( ! is_string( $map_file ) || '' === $map_file || ! file_exists( $map_file ) ) {
+			$cached_map = array();
+
+			return $cached_map;
+		}
+
+		$loaded = require $map_file; // phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable -- local plugin path and static filename.
+		if ( ! is_array( $loaded ) ) {
+			$cached_map = array();
+
+			return $cached_map;
+		}
+
+		$normalized = array();
+		foreach ( $loaded as $provider_key => $icons ) {
+			$key = sanitize_key( (string) $provider_key );
+			if ( '' === $key || ! is_array( $icons ) ) {
+				continue;
+			}
+
+			$icon_light = isset( $icons['icon_light'] ) ? trim( (string) $icons['icon_light'] ) : '';
+			$icon_dark  = isset( $icons['icon_dark'] ) ? trim( (string) $icons['icon_dark'] ) : '';
+
+			if ( '' !== $icon_light && ! str_starts_with( $icon_light, 'data:image/' ) ) {
+				$icon_light = '';
+			}
+			if ( '' !== $icon_dark && ! str_starts_with( $icon_dark, 'data:image/' ) ) {
+				$icon_dark = '';
+			}
+
+			if ( '' === $icon_light && '' === $icon_dark ) {
+				continue;
+			}
+
+			$normalized[ $key ] = array(
+				'icon_light' => $icon_light,
+				'icon_dark'  => $icon_dark,
+			);
+		}
+
+		$cached_map = $normalized;
+
+		return $cached_map;
+	}
+
+	/**
 	 * Resolve a canonical provider label from raw provider/label signals.
 	 *
 	 * @param string $provider Raw provider value from logs.
@@ -1888,17 +2009,19 @@ class ADVAPAFO_Settings {
 	 */
 	private function resolve_authenticator_provider_label_from_signals( string $provider = '', string $label = '', string $aaguid = '' ): string {
 		if ( '' !== $aaguid ) {
-			$aaguid_map = array(
-				'08987058-cadc-4b81-b6e1-30de50dcbe96' => 'Windows Hello',
-				'2fc0579f-8113-47ea-b116-bb5a8db9202a' => 'YubiKey',
-			);
+			static $filtered_aaguid_map = null;
+			if ( ! is_array( $filtered_aaguid_map ) ) {
+				$aaguid_map = $this->get_default_authenticator_aaguid_map();
 
-			/**
-			 * Filter known AAGUID to provider label mappings.
-			 *
-			 * @param array<string,string> $aaguid_map Existing AAGUID map.
-			 */
-			$aaguid_map = (array) apply_filters( 'advapafo_authenticator_aaguid_map', $aaguid_map );
+				/**
+				 * Filter known AAGUID to provider label mappings.
+				 *
+				 * @param array<string,string> $aaguid_map Existing AAGUID map.
+				 */
+				$filtered_aaguid_map = (array) apply_filters( 'advapafo_authenticator_aaguid_map', $aaguid_map );
+			}
+
+			$aaguid_map = $filtered_aaguid_map;
 			if ( isset( $aaguid_map[ $aaguid ] ) ) {
 				$mapped = trim( (string) $aaguid_map[ $aaguid ] );
 				if ( '' !== $mapped ) {
@@ -1915,17 +2038,18 @@ class ADVAPAFO_Settings {
 		$known_providers = array(
 			'iCloud Keychain'         => array( 'icloud', 'i cloud', 'apple password', 'apple passwords', 'apple passkey', 'apple keychain' ),
 			'Bitwarden'               => array( 'bitwarden', 'bitwarded' ),
-			'Google Password Manager' => array( 'google password manager', 'google passkey', 'google', 'chrome password', 'chrome passkey', 'chrome' ),
+			'Google Password Manager' => array( 'google password manager', 'google passkey', 'google', 'chrome password', 'chrome passkey', 'chrome', 'android credential manager' ),
 			'Samsung Pass'            => array( 'samsung pass', 'samsung passkey', 'samsung' ),
 			'LastPass'                => array( 'lastpass' ),
 			'1Password'               => array( '1password', 'onepassword' ),
 			'Dashlane'                => array( 'dashlane' ),
 			'NordPass'                => array( 'nordpass' ),
 			'Proton Pass'             => array( 'proton pass', 'protonpass' ),
-			'Windows Hello'           => array( 'windows hello', 'microsoft authenticator' ),
+			'Windows Hello'           => array( 'windows hello', 'microsoft authenticator', 'microsoft password manager' ),
 			'YubiKey'                 => array( 'yubikey', 'yubico' ),
 			'Keeper'                  => array( 'keeper' ),
 			'Enpass'                  => array( 'enpass' ),
+			'KeePassXC'               => array( 'keepassxc', 'keepass dx', 'keepassdx', 'keepass passkey' ),
 			'RoboForm'                => array( 'roboform' ),
 		);
 
@@ -2006,6 +2130,22 @@ class ADVAPAFO_Settings {
 				'class'       => true,
 				'aria-hidden' => true,
 			),
+			'picture' => array(
+				'class' => true,
+			),
+			'source' => array(
+				'srcset' => true,
+				'media'  => true,
+			),
+			'img'    => array(
+				'class'    => true,
+				'src'      => true,
+				'alt'      => true,
+				'width'    => true,
+				'height'   => true,
+				'loading'  => true,
+				'decoding' => true,
+			),
 			'svg'    => array(
 				'viewBox'         => true,
 				'width'           => true,
@@ -2075,10 +2215,13 @@ class ADVAPAFO_Settings {
 		if ( strpos( $provider_lc, 'google' ) !== false || strpos( $provider_lc, 'chrome' ) !== false ) {
 			return 'google';
 		}
+		if ( strpos( $provider_lc, 'keepassxc' ) !== false || strpos( $provider_lc, 'keepassdx' ) !== false || strpos( $provider_lc, 'keepass' ) !== false ) {
+			return 'unknown-security-key';
+		}
 		if ( strpos( $provider_lc, 'samsung' ) !== false ) {
 			return 'samsung';
 		}
-		if ( strpos( $provider_lc, 'windows hello' ) !== false || strpos( $provider_lc, 'microsoft authenticator' ) !== false ) {
+		if ( strpos( $provider_lc, 'windows hello' ) !== false || strpos( $provider_lc, 'microsoft authenticator' ) !== false || strpos( $provider_lc, 'microsoft password manager' ) !== false ) {
 			return 'windows-hello';
 		}
 		if ( strpos( $provider_lc, 'yubikey' ) !== false || strpos( $provider_lc, 'yubico' ) !== false ) {
@@ -2137,69 +2280,26 @@ class ADVAPAFO_Settings {
 	 * @return string
 	 */
 	private function get_authenticator_provider_icon_svg( string $provider_key ): string {
-		$icon = '';
+		$assets = $this->get_authenticator_provider_icon_asset_map();
+		if ( isset( $assets[ $provider_key ] ) && is_array( $assets[ $provider_key ] ) ) {
+			$icon_light = isset( $assets[ $provider_key ]['icon_light'] ) ? trim( (string) $assets[ $provider_key ]['icon_light'] ) : '';
+			$icon_dark  = isset( $assets[ $provider_key ]['icon_dark'] ) ? trim( (string) $assets[ $provider_key ]['icon_dark'] ) : '';
 
-		switch ( $provider_key ) {
-			case 'bitwarden':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M8 1.6 12.8 3v4.4c0 3-1.9 5.7-4.8 7-2.9-1.3-4.8-4-4.8-7V3L8 1.6Z" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="7" r="1.35" fill="currentColor"/><path d="M8 8.35v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
-				break;
-			case 'icloud':
-					$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M10.8 8.6c0-1.5 1.2-2.3 1.2-2.3-.7-1.1-1.8-1.3-2.2-1.3-.9-.1-1.8.5-2.3.5-.6 0-1.4-.5-2.2-.5-1.2 0-2.2.7-2.8 1.8-1.2 2.1-.3 5.2.9 6.9.6.8 1.2 1.7 2.1 1.7.8 0 1.2-.5 2.2-.5s1.4.5 2.2.5c.9 0 1.5-.8 2.1-1.6.6-.9.9-1.8 1-1.8-.1 0-2-.8-2-3.4Z" fill="currentColor"/><path d="M9.4 3.8c.4-.5.7-1.3.6-2-.7 0-1.5.5-1.9 1-.4.4-.7 1.2-.6 1.9.8.1 1.5-.4 1.9-.9Z" fill="currentColor"/></svg>';
-				break;
-			case '1password':
-			case 'onepassword':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><rect x="1.5" y="3" width="13" height="10" rx="5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/><path d="M8 8v2.1" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/></svg>';
-				break;
-			case 'lastpass':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><circle cx="4.2" cy="8" r="1.6" fill="currentColor"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/><circle cx="11.8" cy="8" r="1.6" fill="currentColor"/></svg>';
-				break;
-			case 'google':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.8"/><path d="M8 5.4v2.8l2 1.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
-				break;
-			case 'samsung':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><rect x="2" y="3" width="12" height="10" rx="5" stroke="currentColor" stroke-width="1.6"/><path d="M5 8h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
-				break;
-			case 'dashlane':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M3 4.3h4.4c2.4 0 4.3 1.9 4.3 4.2S9.8 12.7 7.4 12.7H3V4.3Z" fill="currentColor"/><path d="M8.4 4.3H13v8.4H8.4" fill="currentColor" fill-opacity="0.55"/></svg>';
-				break;
-			case 'nordpass':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M4 12V4.5l4 3.1V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 12V4l4 3.3V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-				break;
-			case 'proton-pass':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M3 5.2A2.2 2.2 0 0 1 5.2 3h5.6A2.2 2.2 0 0 1 13 5.2v5.6a2.2 2.2 0 0 1-2.2 2.2H5.2A2.2 2.2 0 0 1 3 10.8V5.2Z" stroke="currentColor" stroke-width="1.4"/><path d="M6 8h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
-				break;
-			case 'windows-hello':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><rect x="2" y="2" width="5.2" height="5.2" fill="currentColor"/><rect x="8.8" y="2" width="5.2" height="5.2" fill="currentColor"/><rect x="2" y="8.8" width="5.2" height="5.2" fill="currentColor"/><rect x="8.8" y="8.8" width="5.2" height="5.2" fill="currentColor"/></svg>';
-				break;
-			case 'yubikey':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M5.2 6.1a2.8 2.8 0 1 1 4.9 1.9v2.8a2.1 2.1 0 1 1-4.2 0V8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8" cy="4.7" r="0.8" fill="currentColor"/></svg>';
-				break;
-			case 'keeper':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><rect x="2.2" y="2.2" width="11.6" height="11.6" rx="3" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>';
-				break;
-			case 'enpass':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M3 4.2h10v7.6H3z" stroke="currentColor" stroke-width="1.4"/><path d="M6 4.2v-1a2 2 0 1 1 4 0v1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
-				break;
-			case 'roboform':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><path d="M3 3.5h5.8a2.8 2.8 0 1 1 0 5.6H3V3.5Z" stroke="currentColor" stroke-width="1.4"/><path d="M3 9.1h6.1l3 3.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-				break;
-			case 'unknown-platform':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><rect x="2.2" y="2.2" width="11.6" height="11.6" rx="2.4" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 8h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
-				break;
-			case 'unknown-security-key':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><circle cx="5.2" cy="8" r="2" stroke="currentColor" stroke-width="1.4"/><path d="M7.2 8h5.8M10.2 8v1.8M12.2 8v1.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
-				break;
-			case 'unknown-cross-device':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><rect x="1.8" y="3" width="7" height="10" rx="1.6" stroke="currentColor" stroke-width="1.3"/><rect x="10" y="4.6" width="4.2" height="7" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M8.8 8h1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
-				break;
-			case 'unknown':
-				$icon = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4"/><path d="M6.8 6.4a1.2 1.2 0 1 1 2.4 0c0 .8-1.2 1-1.2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.2" r="0.7" fill="currentColor"/></svg>';
-				break;
-			default:
-				break;
+			if ( '' === $icon_light && '' === $icon_dark ) {
+				return '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4"/><path d="M6.8 6.4a1.2 1.2 0 1 1 2.4 0c0 .8-1.2 1-1.2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.2" r="0.7" fill="currentColor"/></svg>';
+			}
+
+			if ( '' !== $icon_dark && '' !== $icon_light && $icon_dark !== $icon_light ) {
+				return '<picture class="wpkpro-provider-icon-image-wrap"><source media="(prefers-color-scheme: dark)" srcset="' . esc_attr( $icon_dark ) . '" /><img class="wpkpro-provider-icon-image" src="' . esc_attr( $icon_light ) . '" alt="" width="16" height="16" loading="lazy" decoding="async" /></picture>';
+			}
+
+			$single = '' !== $icon_light ? $icon_light : $icon_dark;
+			if ( '' !== $single ) {
+				return '<img class="wpkpro-provider-icon-image" src="' . esc_attr( $single ) . '" alt="" width="16" height="16" loading="lazy" decoding="async" />';
+			}
 		}
 
-		return $icon;
+		return '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true" focusable="false" role="img"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4"/><path d="M6.8 6.4a1.2 1.2 0 1 1 2.4 0c0 .8-1.2 1-1.2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="8" cy="11.2" r="0.7" fill="currentColor"/></svg>';
 	}
 
 	/**
@@ -2207,6 +2307,10 @@ class ADVAPAFO_Settings {
 	 */
 	private function render_advanced_tab() {
 		$show_separator             = (bool) get_option( 'advapafo_show_separator', true );
+		$conditional_ui_enabled     = (bool) get_option( 'advapafo_conditional_ui_enabled', false );
+		if ( $conditional_ui_enabled ) {
+			$show_separator = false;
+		}
 		$button_style               = get_option( 'advapafo_button_style', 'black' );
 		$rp_name                    = get_option( 'advapafo_rp_name', '' );
 		$rp_id                      = get_option( 'advapafo_rp_id', '' );
@@ -2223,15 +2327,36 @@ class ADVAPAFO_Settings {
 			</div>
 		</section>
 
-		<div class="advapafo-card advapafo-card--setting">
+		<div class="advapafo-card advapafo-card--setting<?php echo esc_attr( $conditional_ui_enabled ? ' advapafo-card--setting-disabled' : '' ); ?>">
 			<div class="advapafo-setting-copy">
 				<h3><?php esc_html_e( 'Show login OR separator', 'advanced-passkey-login' ); ?></h3>
 				<p><?php esc_html_e( 'Display the centered OR divider above the passkey button on wp-login.php.', 'advanced-passkey-login' ); ?></p>
+				<?php if ( $conditional_ui_enabled ) : ?>
+					<p><small><?php esc_html_e( 'Disabled while Conditional UI is enabled to keep a single, native autofill login path.', 'advanced-passkey-login' ); ?></small></p>
+				<?php endif; ?>
 			</div>
 			<label class="advapafo-switch">
-				<input type="checkbox" name="advapafo_show_separator" value="1" <?php checked( $show_separator ); ?> />
+				<input type="checkbox" name="advapafo_show_separator" value="1" <?php checked( $show_separator ); ?> <?php disabled( $conditional_ui_enabled ); ?> />
 				<span class="advapafo-switch__track"><span class="advapafo-switch__thumb"></span></span>
 				<span class="screen-reader-text"><?php esc_html_e( 'Show login OR separator', 'advanced-passkey-login' ); ?></span>
+			</label>
+			<?php if ( $conditional_ui_enabled ) : ?>
+				<input type="hidden" name="advapafo_show_separator" value="0" />
+			<?php endif; ?>
+		</div>
+
+		<div class="advapafo-card advapafo-card--setting">
+			<div class="advapafo-setting-copy">
+				<h3><?php esc_html_e( 'Enable passkey autofill (Conditional UI)', 'advanced-passkey-login' ); ?></h3>
+				<p><?php esc_html_e( 'When supported by the browser, passkeys appear in the native autofill list when focusing the username field.', 'advanced-passkey-login' ); ?></p>
+				<?php if ( $conditional_ui_enabled ) : ?>
+					<p><small><?php esc_html_e( 'Conditional UI is active, so the manual "Sign in with Passkey" button is hidden on wp-login.php and the OR separator is automatically turned off to avoid duplicate login prompts.', 'advanced-passkey-login' ); ?></small></p>
+				<?php endif; ?>
+			</div>
+			<label class="advapafo-switch">
+				<input type="checkbox" name="advapafo_conditional_ui_enabled" value="1" <?php checked( $conditional_ui_enabled ); ?> />
+				<span class="advapafo-switch__track"><span class="advapafo-switch__thumb"></span></span>
+				<span class="screen-reader-text"><?php esc_html_e( 'Enable passkey autofill (Conditional UI)', 'advanced-passkey-login' ); ?></span>
 			</label>
 		</div>
 
@@ -2475,6 +2600,30 @@ class ADVAPAFO_Settings {
 	 * @return int
 	 */
 	public function sanitize_checkbox( $value ) {
+		return ! empty( $value ) ? 1 : 0;
+	}
+
+	/**
+	 * Sanitize separator toggle and force OFF while Conditional UI is enabled.
+	 *
+	 * @param mixed $value Raw separator checkbox value.
+	 * @return int
+	 */
+	public function sanitize_show_separator( $value ) {
+		$posted_conditional = null;
+		if ( isset( $_POST['advapafo_conditional_ui_enabled'] ) ) {
+			$raw_conditional    = sanitize_text_field( wp_unslash( $_POST['advapafo_conditional_ui_enabled'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- sanitized setting field submitted to options.php settings endpoint.
+			$posted_conditional = '' !== $raw_conditional && '0' !== $raw_conditional;
+		}
+
+		$conditional_enabled = null !== $posted_conditional
+			? (bool) $posted_conditional
+			: (bool) get_option( 'advapafo_conditional_ui_enabled', false );
+
+		if ( $conditional_enabled ) {
+			return 0;
+		}
+
 		return ! empty( $value ) ? 1 : 0;
 	}
 

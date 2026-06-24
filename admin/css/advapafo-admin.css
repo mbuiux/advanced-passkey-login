@@ -444,6 +444,26 @@
     transform: translateX(24px);
 }
 
+.advapafo-card--setting-disabled {
+    opacity: 0.68;
+}
+
+.advapafo-card--setting-disabled .advapafo-switch {
+    cursor: not-allowed;
+}
+
+.advapafo-card--setting-disabled .advapafo-switch > input[type="checkbox"] {
+    display: none !important;
+}
+
+.advapafo-card--setting-disabled .advapafo-switch input:disabled + .advapafo-switch__track {
+    background: #d8dee6;
+}
+
+.advapafo-card--setting-disabled .advapafo-switch input:disabled + .advapafo-switch__track .advapafo-switch__thumb {
+    box-shadow: none;
+}
+
 .advapafo-role-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1476,6 +1496,10 @@ body.login #advapafo-login-passkey-block {
     padding-top: 18px;
 }
 
+body.login #advapafo-login-passkey-block.advapafo-login-passkey-block--conditional-only {
+    padding-top: 0;
+}
+
 body.login .advapafo-login-separator {
     width: 100%;
     margin: 0 0 12px 0;
@@ -1527,6 +1551,10 @@ body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn {
     text-shadow: none;
     box-shadow: 0 2px 8px rgba(17, 24, 32, 0.22);
     transition: background 150ms ease, border-color 150ms ease, transform 120ms ease, box-shadow 150ms ease;
+}
+
+body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn.advapafo-passkey-btn--hidden {
+    display: none !important;
 }
 
 body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn:hover,
@@ -1638,12 +1666,35 @@ body.login #advapafo-passkey-login-message {
     height: 14px;
 }
 
+.wpkpro-provider-icon-image-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wpkpro-provider-icon-image {
+    display: block;
+    width: 14px;
+    height: 14px;
+    object-fit: contain;
+}
+
 .wpkpro-provider-chip--icloud .wpkpro-provider-icon,
 .wpkpro-provider-chip--apple .wpkpro-provider-icon,
 .wpkpro-provider-chip--apple-passwords .wpkpro-provider-icon {
     color: #111827 !important;
     background: rgba(17, 24, 39, 0.1) !important;
     border-color: rgba(17, 24, 39, 0.2) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    .wpkpro-provider-chip--icloud .wpkpro-provider-icon,
+    .wpkpro-provider-chip--apple .wpkpro-provider-icon,
+    .wpkpro-provider-chip--apple-passwords .wpkpro-provider-icon {
+        color: #ffffff !important;
+        background: #111827 !important;
+        border-color: #111827 !important;
+    }
 }
 
 .wpkpro-provider-chip--unknown .wpkpro-provider-icon {
