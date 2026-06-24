@@ -1582,6 +1582,14 @@ body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn.advapafo-passkey-b
     box-shadow: 0 2px 8px rgba(71, 85, 105, 0.18);
 }
 
+/* Hidden state must always win, including when light-grey style is selected. */
+body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn.advapafo-passkey-btn--light-grey.advapafo-passkey-btn--hidden,
+body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn[hidden] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+}
+
 body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn.advapafo-passkey-btn--light-grey:hover,
 body.login .advapafo-login-passkey-wrap .advapafo-passkey-btn.advapafo-passkey-btn--light-grey:focus {
     border-color: #9aa4b2 !important;

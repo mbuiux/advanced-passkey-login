@@ -79,8 +79,8 @@ if ( ! function_exists( 'advapafo_is_template_path_allowed' ) ) {
 	/**
 	 * Ensure a resolved template path stays within known allowed roots.
 	 *
-	 * @param string              $resolved_path Absolute template path.
-	 * @param array<int, string>  $allowed_roots Allowed absolute root directories.
+	 * @param string             $resolved_path Absolute template path.
+	 * @param array<int, string> $allowed_roots Allowed absolute root directories.
 	 * @return bool
 	 */
 	function advapafo_is_template_path_allowed( string $resolved_path, array $allowed_roots ): bool {
@@ -130,7 +130,7 @@ if ( ! function_exists( 'advapafo_get_template' ) ) {
 		 * @param array{template_name:string,args:array<string,mixed>,theme_root:string,plugin_root:string} $context Template context.
 		 */
 		$context = apply_filters(
-			'advanced_passkeys_get_template_part',
+			'advapafo_get_template_part',
 			array(
 				'template_name' => $template_name,
 				'args'          => $args,

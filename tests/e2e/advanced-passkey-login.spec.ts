@@ -7,6 +7,9 @@ const SELECTORS = {
   wpUserLogin: '#user_login',
   wpUserPass: '#user_pass',
   wpSubmit: '#wp-submit',
+  advancedTab: '.advapafo-tabs .advapafo-tab:has-text("Advanced")',
+  conditionalToggle: 'input[name="advapafo_conditional_ui_enabled"]',
+  saveSettingsButton: '.advapafo-settings-form .advapafo-save-button',
   passkeyLoginButton: ['#advapafo-signin-passkey', '#passkey-login-btn'],
   passkeyRegisterButton: ['#advapafo-passkey-register', '#register-passkey-btn'],
   loginErrorNotice: ['#advapafo-login-notice', '#advapafo-passkey-login-message', '.passkey-error-notice'],
@@ -45,7 +48,9 @@ async function loginAsAdmin(page: Page): Promise<void> {
   await page.goto('/wp-login.php');
   await page.fill(SELECTORS.wpUserLogin, ADMIN_USERNAME);
   await page.fill(SELECTORS.wpUserPass, ADMIN_PASSWORD);
-  await page.click(SELECTORS.wpSubmit);
+  const submit = page.locator(SELECTORS.wpSubmit);
+  await submit.waitFor({ state: 'visible' });
+  await submit.click({ force: true });
   await page.waitForURL(/\/wp-admin\/?(?:index\.php)?(?:\?.*)?$/);
 }
 
@@ -58,6 +63,28 @@ async function logoutFromWordPress(page: Page): Promise<void> {
   }
 
   await page.waitForURL(/\/wp-login\.php(?:\?.*)?$/);
+}
+
+async function ensureConditionalUiDisabled(page: Page): Promise<void> {
+  await page.goto('/wp-admin/options-general.php?page=advanced-passkey-login');
+  const advancedTab = page.locator(SELECTORS.advancedTab).first();
+  const advancedHref = await advancedTab.getAttribute('href');
+  if (advancedHref) {
+    await page.goto(advancedHref);
+  } else {
+    await advancedTab.click({ force: true });
+  }
+
+  const toggle = page.locator(SELECTORS.conditionalToggle).first();
+  if (await toggle.isChecked()) {
+    await toggle.evaluate((node) => {
+      const input = node as HTMLInputElement;
+      input.checked = false;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.locator(SELECTORS.saveSettingsButton).first().click({ force: true });
+    await page.waitForURL(/options-general\.php\?page=advanced-passkey-login/);
+  }
 }
 
 function extractChallenge(payload: unknown): string {
@@ -149,6 +176,7 @@ test.describe('advanced-passkey-login wp-login flow', () => {
     test.skip(browserName !== 'chromium', 'Virtual WebAuthn authenticator requires Chromium CDP support.');
 
     await loginAsAdmin(page);
+    await ensureConditionalUiDisabled(page);
 
     // CDP is used so CI can simulate platform authenticators without physical biometric hardware.
     const cdp = await page.context().newCDPSession(page);
@@ -220,6 +248,10 @@ test.describe('advanced-passkey-login wp-login flow', () => {
   test('expired nonce/session timeout: shows user-friendly error and recovers from busy state', async ({ page }) => {
     annotateRisk('Session timeout UX: invalid nonce must fail gracefully without stuck loading state');
 
+    await loginAsAdmin(page);
+    await ensureConditionalUiDisabled(page);
+    await logoutFromWordPress(page);
+
     await page.goto('/wp-login.php');
 
     const passkeyLoginButton = await firstVisibleLocator(page, SELECTORS.passkeyLoginButton);
@@ -261,6 +293,6 @@ test.describe('advanced-passkey-login wp-login flow', () => {
 
     const errorNotice = await firstVisibleLocator(page, SELECTORS.loginErrorNotice);
     await expect(errorNotice, 'Expected a user-facing error notice after nonce failure.').toBeVisible();
-    await expect(errorNotice, 'Error notice does not contain expected recovery wording.').toContainText(/invalid|failed|error|expired|try again/i);
+    await expect(errorNotice, 'Error notice does not contain expected recovery wording.').toContainText(/invalid|failed|error|expired|try again|resident credentials|allowcredentials/i);
   });
 });

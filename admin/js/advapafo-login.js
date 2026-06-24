@@ -423,6 +423,28 @@
         var conditionalController = null;
         var conditionalFlowActive = false;
 
+        function enforceConditionalUiUiState() {
+            if (!ADVAPAFOLogin.conditionalUi || !document.body || !document.body.classList.contains('login')) {
+                return;
+            }
+
+            var separator = document.querySelector('#advapafo-login-passkey-block .advapafo-login-separator');
+            if (separator && separator.parentNode) {
+                separator.parentNode.removeChild(separator);
+            }
+
+            buttons.forEach(function (btn) {
+                btn.classList.add('advapafo-passkey-btn--hidden');
+                btn.setAttribute('hidden', 'hidden');
+                btn.setAttribute('aria-hidden', 'true');
+                btn.style.setProperty('display', 'none', 'important');
+                btn.style.setProperty('visibility', 'hidden', 'important');
+                btn.style.setProperty('opacity', '0', 'important');
+            });
+        }
+
+        enforceConditionalUiUiState();
+
         // Graceful degradation for unsupported browsers
         if (!window.PublicKeyCredential || !navigator.credentials || !navigator.credentials.get) {
             buttons.forEach(function (btn) {

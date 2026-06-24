@@ -568,10 +568,10 @@ class ADVAPAFO_Passkeys {
 			'advapafo-login',
 			'ADVAPAFOLogin',
 			array(
-				'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
-				'nonce'    => wp_create_nonce( 'advapafo_login' ),
+				'ajaxUrl'       => admin_url( 'admin-ajax.php' ),
+				'nonce'         => wp_create_nonce( 'advapafo_login' ),
 				'conditionalUi' => $conditional_ui_enabled,
-				'messages' => array(
+				'messages'      => array(
 					'notSupported' => __( 'Passkeys are unavailable here. Use HTTPS (or localhost) in a passkey-capable browser, or sign in with your password.', 'advanced-passkey-login' ),
 					'genericError' => __( 'Passkey sign-in failed. Please try again or use your password.', 'advanced-passkey-login' ),
 					'signingIn'    => __( 'Signing in…', 'advanced-passkey-login' ),
@@ -1189,12 +1189,15 @@ class ADVAPAFO_Passkeys {
 
 	/**
 	 * Start passkey login ceremony.
+	 *
+	 * @throws \RuntimeException When challenge generation returns an empty value.
+	 * @throws \Throwable        When upstream WebAuthn option generation fails in non-usernameless mode.
 	 */
 	public function ajax_begin_login(): void {
-		$ip = $this->get_client_ip();
-		$login                  = isset( $_POST['login'] ) ? sanitize_text_field( wp_unslash( $_POST['login'] ) ) : '';
+		$ip                      = $this->get_client_ip();
+		$login                   = isset( $_POST['login'] ) ? sanitize_text_field( wp_unslash( $_POST['login'] ) ) : '';
 		$is_usernameless_request = ( '' === $login );
-		$ip_bucket_prefix       = $is_usernameless_request ? 'login_begin_ip_usernameless' : 'login_begin_ip';
+		$ip_bucket_prefix        = $is_usernameless_request ? 'login_begin_ip_usernameless' : 'login_begin_ip';
 		if ( ! $this->is_post_request() ) {
 			$this->record_failure( $ip_bucket_prefix, $ip );
 			wp_send_json_error( array( 'message' => 'Invalid request method.' ), 405 );
@@ -1252,13 +1255,13 @@ class ADVAPAFO_Passkeys {
 		}
 
 		try {
-			$web_authn = $this->new_webauthn();
-			$cred_ids  = array_map( fn( $r ) => $this->decode_b64url( $r->credential_id ), $cred_rows );
-			$ttl       = $this->get_login_challenge_ttl();
+			$web_authn        = $this->new_webauthn();
+			$cred_ids         = array_map( fn( $r ) => $this->decode_b64url( $r->credential_id ), $cred_rows );
+			$ttl              = $this->get_login_challenge_ttl();
 			$challenge_binary = '';
 
 			try {
-				$get_args = $web_authn->getGetArgs(
+				$get_args         = $web_authn->getGetArgs(
 					$cred_ids,
 					$ttl,
 					true,
@@ -1288,8 +1291,14 @@ class ADVAPAFO_Passkeys {
 			}
 
 			if ( $is_usernameless_request ) {
-				if ( is_object( $get_args ) && isset( $get_args->publicKey ) && is_object( $get_args->publicKey ) ) {
-					$get_args->publicKey->allowCredentials = array();
+				if ( is_object( $get_args ) ) {
+					$get_args_array = (array) $get_args;
+					if ( isset( $get_args_array['publicKey'] ) && is_object( $get_args_array['publicKey'] ) ) {
+						$public_key_array                     = (array) $get_args_array['publicKey'];
+						$public_key_array['allowCredentials'] = array();
+						$get_args_array['publicKey']          = (object) $public_key_array;
+						$get_args                             = (object) $get_args_array;
+					}
 				} elseif ( is_array( $get_args ) && isset( $get_args['publicKey'] ) && is_array( $get_args['publicKey'] ) ) {
 					$get_args['publicKey']['allowCredentials'] = array();
 				}

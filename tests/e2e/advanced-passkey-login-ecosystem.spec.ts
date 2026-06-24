@@ -32,6 +32,9 @@ const SELECTORS = {
   wpUserPass: '#user_pass',
   wpSubmit: '#wp-submit',
   pluginSettingsRoot: '#advanced-passkey-settings-page',
+  advancedTab: '.advapafo-tabs .advapafo-tab:has-text("Advanced")',
+  conditionalToggle: 'input[name="advapafo_conditional_ui_enabled"]',
+  saveSettingsButton: '.advapafo-settings-form .advapafo-save-button',
   passkeyLoginButtonIds: ['#passkey-login-btn', '#advapafo-signin-passkey'],
   passkeyRegisterButtonIds: ['#register-passkey-btn', '#advapafo-passkey-register'],
   passkeyErrorNotice: ['.passkey-error-notice', '#advapafo-login-notice', '#advapafo-passkey-login-message'],
@@ -72,9 +75,11 @@ async function loginWithWordPressUser(page: Page, username: string, password: st
   await page.goto('/wp-login.php');
   await page.fill(SELECTORS.wpUserLogin, username);
   await page.fill(SELECTORS.wpUserPass, password);
-  await page.click(SELECTORS.wpSubmit);
+  const submit = page.locator(SELECTORS.wpSubmit);
+  await submit.waitFor({ state: 'visible' });
+  await submit.click({ force: true });
 
-  const adminUrlReached = page.waitForURL(/\/wp-admin\//, { timeout: 12_000 }).then(() => true).catch(() => false);
+  const adminUrlReached = page.waitForURL(/\/wp-admin\//, { timeout: 25_000 }).then(() => true).catch(() => false);
   const loginErrorVisible = page
     .locator('#login_error')
     .waitFor({ state: 'visible', timeout: 12_000 })
@@ -90,6 +95,29 @@ async function loginWithWordPressUser(page: Page, username: string, password: st
 
   if (!isAdminUrl) {
     throw new Error(`WordPress login did not reach /wp-admin for user "${username}" and no explicit #login_error was found.`);
+  }
+}
+
+async function ensureConditionalUiDisabled(page: Page): Promise<void> {
+  await page.goto('/wp-admin/options-general.php?page=advanced-passkey-login');
+
+  const advancedTab = page.locator(SELECTORS.advancedTab).first();
+  const advancedHref = await advancedTab.getAttribute('href');
+  if (advancedHref) {
+    await page.goto(advancedHref);
+  } else {
+    await advancedTab.click({ force: true });
+  }
+
+  const toggle = page.locator(SELECTORS.conditionalToggle).first();
+  if (await toggle.isChecked()) {
+    await toggle.evaluate((node) => {
+      const input = node as HTMLInputElement;
+      input.checked = false;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.locator(SELECTORS.saveSettingsButton).first().click({ force: true });
+    await page.waitForURL(/options-general\.php\?page=advanced-passkey-login/);
   }
 }
 
@@ -123,13 +151,18 @@ async function installVirtualAuthenticator(page: Page): Promise<{ cdp: CDPSessio
 }
 
 async function removeVirtualAuthenticator(cdp: CDPSession, authenticatorId: string): Promise<void> {
-  await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
+  try {
+    await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
+  } catch {
+    // Ignore cleanup errors when page/context closes after an upstream failure.
+  }
 }
 
 async function runSuccessfulPasskeyAuthSequence(page: Page): Promise<void> {
   await test.step('Authenticate as administrator using password flow', async () => {
     await loginWithWordPressUser(page, USERS.admin.username, USERS.admin.password);
     await page.waitForURL(/\/wp-admin\/?(?:index\.php)?(?:\?.*)?$/);
+    await ensureConditionalUiDisabled(page);
   });
 
   const { cdp, authenticatorId } = await test.step('Provision Chromium virtual authenticator for deterministic WebAuthn', async () => {

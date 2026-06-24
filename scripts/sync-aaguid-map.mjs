@@ -99,10 +99,13 @@ function normalizeIconDataUri(value) {
 function toPhpAaguidMap(map) {
   const lines = [];
   lines.push('<?php');
+  lines.push('// phpcs:ignoreFile -- Generated file, do not edit manually.');
   lines.push('/**');
   lines.push(' * Generated file: AAGUID to provider label map.');
   lines.push(' * Source: passkeydeveloper/passkey-authenticator-aaguids (aaguid.json).');
   lines.push(' * Regenerate with: npm run sync:aaguid-map');
+  lines.push(' *');
+  lines.push(' * @package AdvancedPasskeyLogin');
   lines.push(' */');
   lines.push('');
   lines.push("if ( ! defined( 'ABSPATH' ) ) {");
@@ -125,10 +128,13 @@ function toPhpAaguidMap(map) {
 function toPhpProviderIconMap(map) {
   const lines = [];
   lines.push('<?php');
+  lines.push('// phpcs:ignoreFile -- Generated file, do not edit manually.');
   lines.push('/**');
   lines.push(' * Generated file: provider key to icon asset map.');
   lines.push(' * Source: passkeydeveloper/passkey-authenticator-aaguids (aaguid.json).');
   lines.push(' * Regenerate with: npm run sync:aaguid-map');
+  lines.push(' *');
+  lines.push(' * @package AdvancedPasskeyLogin');
   lines.push(' */');
   lines.push('');
   lines.push("if ( ! defined( 'ABSPATH' ) ) {");

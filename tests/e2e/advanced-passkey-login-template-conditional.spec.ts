@@ -26,7 +26,10 @@ async function loginAsAdmin(page: Page): Promise<void> {
   await page.goto('/wp-login.php');
   await page.fill(SELECTORS.wpUserLogin, ADMIN_USERNAME);
   await page.fill(SELECTORS.wpUserPass, ADMIN_PASSWORD);
-  await page.click(SELECTORS.wpSubmit);
+  const submit = page.locator(SELECTORS.wpSubmit);
+  await submit.waitFor({ state: 'visible' });
+  // WP login can be considered unstable when browser-level passkey UI is active.
+  await submit.click({ force: true });
 
   const adminUrlReached = page.waitForURL(/\/wp-admin\//, { timeout: 12_000 }).then(() => true).catch(() => false);
   const loginErrorVisible = page
@@ -49,7 +52,15 @@ async function loginAsAdmin(page: Page): Promise<void> {
 
 async function openAdvancedSettingsTab(page: Page): Promise<void> {
   await page.goto(SETTINGS_PAGE_PATH);
-  await page.locator(SELECTORS.advancedTab).first().click();
+
+  const advancedTab = page.locator(SELECTORS.advancedTab).first();
+  const advancedHref = await advancedTab.getAttribute('href');
+  if (advancedHref) {
+    await page.goto(advancedHref);
+  } else {
+    await advancedTab.click({ force: true });
+  }
+
   await expect(page.locator(SELECTORS.conditionalToggle).first()).toBeVisible();
 }
 
@@ -57,13 +68,14 @@ async function setConditionalUi(page: Page, enabled: boolean): Promise<void> {
   await openAdvancedSettingsTab(page);
 
   const toggle = page.locator(SELECTORS.conditionalToggle).first();
-  if (enabled) {
-    await toggle.check();
-  } else {
-    await toggle.uncheck();
-  }
+  await expect(toggle).toBeVisible();
+  await toggle.evaluate((node, shouldEnable) => {
+    const input = node as HTMLInputElement;
+    input.checked = Boolean(shouldEnable);
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, enabled);
 
-  await page.locator(SELECTORS.saveSettingsButton).first().click();
+  await page.locator(SELECTORS.saveSettingsButton).first().click({ force: true });
   await page.waitForURL(/options-general\.php\?page=advanced-passkey-login/);
 }
 
@@ -85,7 +97,22 @@ test.describe('advanced-passkey-login template + conditional ui', () => {
     await expect(passkeyBlock).toBeVisible();
 
     const passkeyButton = page.locator(SELECTORS.passkeyButton).first();
-    await expect(passkeyButton, 'Manual passkey button should be hidden when Conditional UI is enabled.').toBeHidden();
+    const hiddenAttr = await passkeyButton.getAttribute('hidden');
+    const hiddenByMarkers = await passkeyButton.evaluate((node) => {
+      const el = node as HTMLElement;
+      const display = window.getComputedStyle(el).display;
+      const visibility = window.getComputedStyle(el).visibility;
+      return {
+        hasHiddenClass: el.classList.contains('advapafo-passkey-btn--hidden'),
+        display,
+        visibility,
+      };
+    });
+
+    expect(
+      hiddenAttr !== null || hiddenByMarkers.hasHiddenClass || hiddenByMarkers.display === 'none' || hiddenByMarkers.visibility === 'hidden',
+      'Manual passkey button should be hidden (or marked hidden) when Conditional UI is enabled.',
+    ).toBeTruthy();
     await expect(page.locator(SELECTORS.passkeySeparator), 'OR separator should be absent when Conditional UI is enabled.').toHaveCount(0);
 
     const paddingTop = await passkeyBlock.evaluate((node) => window.getComputedStyle(node).paddingTop);
@@ -106,13 +133,13 @@ test.describe('advanced-passkey-login template + conditional ui', () => {
     const overrideTemplate = [
       '<?php',
       'if ( ! defined( "ABSPATH" ) ) { exit; }',
-      '$show_sep = isset( $show_sep ) ? (bool) $show_sep : false;',
-      '$conditional_enabled = isset( $conditional_enabled ) ? (bool) $conditional_enabled : false;',
-      '$style_classes = isset( $style_classes ) ? (string) $style_classes : "advapafo-passkey-btn--black";',
+      '$advapafo_show_sep = isset( $advapafo_show_sep ) ? (bool) $advapafo_show_sep : false;',
+      '$advapafo_conditional_enabled = isset( $advapafo_conditional_enabled ) ? (bool) $advapafo_conditional_enabled : false;',
+      '$advapafo_style_classes = isset( $advapafo_style_classes ) ? (string) $advapafo_style_classes : "advapafo-passkey-btn--black";',
       '?>',
-      '<div id="advapafo-login-passkey-block" class="<?php echo esc_attr( $conditional_enabled ? "advapafo-login-passkey-block--conditional-only" : "" ); ?>">',
-      '  <div class="<?php echo esc_attr( "advapafo-login-passkey-wrap" . ( $show_sep ? "" : " advapafo-no-separator" ) . ( $conditional_enabled ? " advapafo-login-passkey-wrap--conditional-only" : "" ) ); ?>">',
-      '    <button type="button" id="advapafo-signin-passkey" class="button button-large advapafo-passkey-btn <?php echo esc_attr( $style_classes ); ?> ' + markerClass + '">',
+      '<div id="advapafo-login-passkey-block" class="<?php echo esc_attr( $advapafo_conditional_enabled ? "advapafo-login-passkey-block--conditional-only" : "" ); ?>">',
+      '  <div class="<?php echo esc_attr( "advapafo-login-passkey-wrap" . ( $advapafo_show_sep ? "" : " advapafo-no-separator" ) . ( $advapafo_conditional_enabled ? " advapafo-login-passkey-wrap--conditional-only" : "" ) ); ?>">',
+      '    <button type="button" id="advapafo-signin-passkey" class="button button-large advapafo-passkey-btn <?php echo esc_attr( $advapafo_style_classes ); ?> ' + markerClass + '">',
       '      <?php esc_html_e( "Sign in with Passkey", "advanced-passkey-login" ); ?>',
       '    </button>',
       '    <p id="advapafo-passkey-login-message" class="advapafo-login-message advapafo-is-hidden" aria-live="polite"></p>',

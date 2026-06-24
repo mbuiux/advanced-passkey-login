@@ -1,8 +1,11 @@
 <?php
+// phpcs:ignoreFile -- Generated file, do not edit manually.
 /**
  * Generated file: AAGUID to provider label map.
  * Source: passkeydeveloper/passkey-authenticator-aaguids (aaguid.json).
  * Regenerate with: npm run sync:aaguid-map
+ *
+ * @package AdvancedPasskeyLogin
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

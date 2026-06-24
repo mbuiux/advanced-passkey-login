@@ -12,22 +12,22 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-$show_sep            = isset( $show_sep ) ? (bool) $show_sep : false;
-$conditional_enabled = isset( $conditional_enabled ) ? (bool) $conditional_enabled : false;
-$style_classes       = isset( $style_classes ) ? sanitize_html_class( (string) $style_classes ) : 'advapafo-passkey-btn--black';
+$advapafo_show_sep            = isset( $advapafo_show_sep ) ? (bool) $advapafo_show_sep : false;
+$advapafo_conditional_enabled = isset( $advapafo_conditional_enabled ) ? (bool) $advapafo_conditional_enabled : false;
+$advapafo_style_classes       = isset( $advapafo_style_classes ) ? sanitize_html_class( (string) $advapafo_style_classes ) : 'advapafo-passkey-btn--black';
 ?>
-<div id="advapafo-login-passkey-block" class="<?php echo esc_attr( $conditional_enabled ? 'advapafo-login-passkey-block--conditional-only' : '' ); ?>">
-	<?php if ( $show_sep ) : ?>
+<div id="advapafo-login-passkey-block" class="<?php echo esc_attr( $advapafo_conditional_enabled ? 'advapafo-login-passkey-block--conditional-only' : '' ); ?>">
+	<?php if ( $advapafo_show_sep ) : ?>
 	<div class="advapafo-login-separator" role="separator" aria-label="<?php esc_attr_e( 'or', 'advanced-passkey-login' ); ?>">
 		<span><?php esc_html_e( 'OR', 'advanced-passkey-login' ); ?></span>
 	</div>
 	<?php endif; ?>
 
-	<div class="<?php echo esc_attr( 'advapafo-login-passkey-wrap' . ( $show_sep ? '' : ' advapafo-no-separator' ) . ( $conditional_enabled ? ' advapafo-login-passkey-wrap--conditional-only' : '' ) ); ?>">
+	<div class="<?php echo esc_attr( 'advapafo-login-passkey-wrap' . ( $advapafo_show_sep ? '' : ' advapafo-no-separator' ) . ( $advapafo_conditional_enabled ? ' advapafo-login-passkey-wrap--conditional-only' : '' ) ); ?>">
 		<button type="button"
 				id="advapafo-signin-passkey"
-				class="button button-large advapafo-passkey-btn <?php echo esc_attr( $style_classes . ( $conditional_enabled ? ' advapafo-passkey-btn--hidden' : '' ) ); ?>"
-				<?php echo $conditional_enabled ? 'hidden' : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static attribute literal. ?>
+				class="button button-large advapafo-passkey-btn <?php echo esc_attr( $advapafo_style_classes . ( $advapafo_conditional_enabled ? ' advapafo-passkey-btn--hidden' : '' ) ); ?>"
+				<?php echo $advapafo_conditional_enabled ? 'hidden style="display:none"' : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static attribute literal. ?>
 				aria-label="<?php esc_attr_e( 'Sign in with a passkey (Face ID, Touch ID, or security key)', 'advanced-passkey-login' ); ?>">
 			<span class="advapafo-passkey-icon" aria-hidden="true">
 				<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

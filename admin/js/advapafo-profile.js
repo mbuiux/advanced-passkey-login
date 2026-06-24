@@ -98,7 +98,21 @@
     }
 
     function toFriendlyErrorMessage(err) {
+        var errName = (err && err.name) ? String(err.name) : '';
         var msg = (err && err.message) ? String(err.message) : '';
+
+        if (errName === 'InvalidStateError' || /invalid state/i.test(msg)) {
+            return 'A passkey for this account already exists in this authenticator. Try another device/browser profile, or remove the existing passkey for this site and try again.';
+        }
+
+        if (errName === 'NotAllowedError') {
+            return 'Passkey registration was cancelled or timed out. Please try again and complete the device prompt.';
+        }
+
+        if (errName === 'SecurityError') {
+            return 'Passkeys require a secure context. Use HTTPS (or localhost) and try again.';
+        }
+
         if (msg && /did not match the expected pattern/i.test(msg)) {
             return 'Your passkey request data was invalid. Please refresh this page and try again.';
         }

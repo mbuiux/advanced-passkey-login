@@ -71,9 +71,9 @@ class ADVAPAFO_Login_Form {
 			$resolved = advapafo_get_template(
 				'login/button.php',
 				array(
-					'show_sep'            => $show_sep,
-					'conditional_enabled' => $conditional_enabled,
-					'style_classes'       => $style_classes,
+					'advapafo_show_sep'            => $show_sep,
+					'advapafo_conditional_enabled' => $conditional_enabled,
+					'advapafo_style_classes'       => $style_classes,
 				)
 			);
 
@@ -95,7 +95,7 @@ class ADVAPAFO_Login_Form {
 				<button type="button"
 						id="advapafo-signin-passkey"
 						class="button button-large advapafo-passkey-btn <?php echo esc_attr( $style_classes . ( $conditional_enabled ? ' advapafo-passkey-btn--hidden' : '' ) ); ?>"
-						<?php echo $conditional_enabled ? 'hidden' : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static attribute literal. ?>
+						<?php echo $conditional_enabled ? 'hidden style="display:none"' : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static attribute literal. ?>
 						aria-label="<?php esc_attr_e( 'Sign in with a passkey (Face ID, Touch ID, or security key)', 'advanced-passkey-login' ); ?>">
 					<span class="advapafo-passkey-icon" aria-hidden="true">
 						<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

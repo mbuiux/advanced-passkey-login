@@ -989,13 +989,24 @@ class ADVAPAFO_Settings {
 			} else {
 				$rows = $wpdb->get_results( // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
 					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
-					'SELECT COALESCE(NULLIF(TRIM(credential_label), ""), "") AS credential_label, COUNT(*) AS total FROM ' . $credentials_table_sql . ' WHERE revoked_at IS NULL GROUP BY credential_label ORDER BY total DESC LIMIT 30',
+					'SELECT COALESCE(NULLIF(TRIM(credential_label), ""), "") AS credential_label, COALESCE(NULLIF(TRIM(credential_id_hash), ""), "") AS credential_hash, COUNT(*) AS total FROM ' . $credentials_table_sql . ' WHERE revoked_at IS NULL GROUP BY credential_label, credential_id_hash ORDER BY total DESC LIMIT 300',
 					ARRAY_A
 				);
 			}
 
 			foreach ( $rows as $row ) {
-				$provider = $this->resolve_authenticator_provider_for_reporting( (string) ( $row['credential_label'] ?? '' ) );
+				$raw_label       = (string) ( $row['credential_label'] ?? '' );
+				$credential_hash = strtolower( trim( (string) ( $row['credential_hash'] ?? '' ) ) );
+				$raw_provider    = '';
+				$raw_aaguid      = '';
+
+				if ( '' !== $credential_hash ) {
+					$raw_provider = $this->lookup_credential_provider_hint_for_hash( $credential_hash );
+					$raw_aaguid   = $this->lookup_credential_aaguid_for_hash( $credential_hash );
+				}
+
+				$provider_meta = $this->resolve_authenticator_metadata_for_reporting( $raw_provider, $raw_label, $raw_aaguid );
+				$provider      = (string) ( $provider_meta['label'] ?? 'Unknown Authenticator' );
 				if ( ! isset( $authenticator_totals[ $provider ] ) ) {
 					$authenticator_totals[ $provider ] = 0;
 				}
@@ -1232,6 +1243,9 @@ class ADVAPAFO_Settings {
 											$raw_label         = '';
 											$raw_aaguid        = isset( $data['aaguid'] ) ? (string) $data['aaguid'] : '';
 											if ( '' === $raw_authenticator && '' !== $credential_hash ) {
+												$raw_authenticator = $this->lookup_credential_provider_hint_for_hash( $credential_hash );
+											}
+											if ( '' === $raw_authenticator && '' !== $credential_hash ) {
 												$raw_authenticator = $this->lookup_credential_label_for_hash( $credential_hash );
 											}
 											if ( '' === $raw_aaguid && '' !== $credential_hash ) {
@@ -1348,48 +1362,205 @@ class ADVAPAFO_Settings {
 		}
 
 		global $wpdb;
-		$logs_table = $wpdb->prefix . 'advapafo_logs';
-		if ( ! $this->table_exists( $logs_table ) ) {
-			$cache[ $credential_hash ] = '';
-			return '';
-		}
-
-		$table_sql = $this->quote_table_name( $logs_table );
-		if ( '' === $table_sql ) {
-			$cache[ $credential_hash ] = '';
-			return '';
-		}
-
-		$like_token = '"credential_hash":"' . $wpdb->esc_like( $credential_hash ) . '"';
-		$rows       = $wpdb->get_col( // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- bounded lookup from plugin-owned logs table.
-			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
-				'SELECT log_data FROM ' . $table_sql . ' WHERE event_type = %s AND log_data LIKE %s ORDER BY id DESC LIMIT 12',
-				'registered',
-				'%' . $like_token . '%'
+		$resolved   = '';
+		$log_tables = array_values(
+			array_unique(
+				array(
+					$wpdb->prefix . 'advapafo_logs',
+					$wpdb->prefix . 'wpk_logs',
+				)
 			)
 		);
 
-		$resolved = '';
-		foreach ( $rows as $row_json ) {
-			$payload = json_decode( (string) $row_json, true );
-			if ( ! is_array( $payload ) ) {
+		$event_types = array(
+			'registered',
+			'registration_success',
+			'passkey_registered',
+		);
+
+		foreach ( $log_tables as $logs_table ) {
+			if ( ! $this->table_exists( $logs_table ) ) {
 				continue;
 			}
 
-			$row_hash = isset( $payload['credential_hash'] ) ? strtolower( trim( (string) $payload['credential_hash'] ) ) : '';
-			if ( '' === $row_hash || ! hash_equals( $credential_hash, $row_hash ) ) {
+			$table_sql = $this->quote_table_name( $logs_table );
+			if ( '' === $table_sql ) {
 				continue;
 			}
 
-			$resolved = isset( $payload['aaguid'] ) ? $this->normalize_authenticator_aaguid( (string) $payload['aaguid'] ) : '';
-			if ( '' !== $resolved ) {
-				break;
+			$rows = $wpdb->get_col( // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- bounded lookup from plugin-owned logs tables.
+				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
+					'SELECT log_data FROM ' . $table_sql . ' WHERE event_type IN (%s, %s, %s) ORDER BY id DESC LIMIT 400',
+					$event_types[0],
+					$event_types[1],
+					$event_types[2]
+				)
+			);
+
+			foreach ( $rows as $row_json ) {
+				$payload = json_decode( (string) $row_json, true );
+				if ( ! is_array( $payload ) ) {
+					continue;
+				}
+
+				$row_hash = $this->extract_credential_hash_from_log_payload( $payload );
+
+				if ( '' === $row_hash || ! hash_equals( $credential_hash, $row_hash ) ) {
+					continue;
+				}
+
+				$raw_aaguid = '';
+				if ( isset( $payload['aaguid'] ) ) {
+					$raw_aaguid = (string) $payload['aaguid'];
+				} elseif ( isset( $payload['AAGUID'] ) ) {
+					$raw_aaguid = (string) $payload['AAGUID'];
+				}
+
+				$resolved = $this->normalize_authenticator_aaguid( $raw_aaguid );
+				if ( '' !== $resolved ) {
+					break 2;
+				}
 			}
 		}
 
 		$cache[ $credential_hash ] = $resolved;
 		return $resolved;
+	}
+
+	/**
+	 * Resolve credential provider hint from recent audit logs by credential hash.
+	 *
+	 * @param string $credential_hash Credential SHA-256 hash.
+	 * @return string
+	 */
+	private function lookup_credential_provider_hint_for_hash( string $credential_hash ): string {
+		static $cache    = array();
+		$credential_hash = strtolower( trim( $credential_hash ) );
+		if ( '' === $credential_hash ) {
+			return '';
+		}
+
+		if ( isset( $cache[ $credential_hash ] ) ) {
+			return (string) $cache[ $credential_hash ];
+		}
+
+		global $wpdb;
+		$resolved   = '';
+		$log_tables = array_values(
+			array_unique(
+				array(
+					$wpdb->prefix . 'advapafo_logs',
+					$wpdb->prefix . 'wpk_logs',
+				)
+			)
+		);
+
+		$event_types = array(
+			'login_success',
+			'registered',
+			'registration_success',
+			'passkey_registered',
+			'login_credential_mismatch',
+		);
+
+		$provider_fields = array(
+			'authenticator',
+			'authenticator_label',
+			'provider',
+			'provider_label',
+			'device_name',
+			'device',
+		);
+
+		foreach ( $log_tables as $logs_table ) {
+			if ( ! $this->table_exists( $logs_table ) ) {
+				continue;
+			}
+
+			$table_sql = $this->quote_table_name( $logs_table );
+			if ( '' === $table_sql ) {
+				continue;
+			}
+
+			$rows = $wpdb->get_col( // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter,WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- bounded lookup from plugin-owned logs tables.
+				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- table identifier is strict-validated by quote_table_name().
+					'SELECT log_data FROM ' . $table_sql . ' WHERE event_type IN (%s, %s, %s, %s, %s) ORDER BY id DESC LIMIT 600',
+					$event_types[0],
+					$event_types[1],
+					$event_types[2],
+					$event_types[3],
+					$event_types[4]
+				)
+			);
+
+			foreach ( $rows as $row_json ) {
+				$payload = json_decode( (string) $row_json, true );
+				if ( ! is_array( $payload ) ) {
+					continue;
+				}
+
+				$row_hash = $this->extract_credential_hash_from_log_payload( $payload );
+				if ( '' === $row_hash || ! hash_equals( $credential_hash, $row_hash ) ) {
+					continue;
+				}
+
+				$raw_provider = '';
+				foreach ( $provider_fields as $field ) {
+					if ( ! isset( $payload[ $field ] ) ) {
+						continue;
+					}
+
+					$candidate = trim( sanitize_text_field( (string) $payload[ $field ] ) );
+					if ( '' !== $candidate ) {
+						$raw_provider = $candidate;
+						break;
+					}
+				}
+
+				$raw_aaguid = '';
+				if ( isset( $payload['aaguid'] ) ) {
+					$raw_aaguid = (string) $payload['aaguid'];
+				} elseif ( isset( $payload['AAGUID'] ) ) {
+					$raw_aaguid = (string) $payload['AAGUID'];
+				}
+
+				$resolved = $this->resolve_authenticator_provider_label_from_signals( $raw_provider, $raw_provider, $raw_aaguid );
+				if ( '' === $resolved && '' !== $raw_provider && ! $this->is_generic_authenticator_placeholder( $raw_provider ) ) {
+					$resolved = $raw_provider;
+				}
+
+				if ( '' !== $resolved ) {
+					break 2;
+				}
+			}
+		}
+
+		$cache[ $credential_hash ] = $resolved;
+
+		return $resolved;
+	}
+
+	/**
+	 * Extract a credential hash from a log payload using known key variants.
+	 *
+	 * @param array<string,mixed> $payload Parsed log payload.
+	 * @return string
+	 */
+	private function extract_credential_hash_from_log_payload( array $payload ): string {
+		foreach ( array( 'credential_hash', 'credential_id_hash', 'credentialIdHash', 'hash' ) as $key ) {
+			if ( ! isset( $payload[ $key ] ) ) {
+				continue;
+			}
+
+			$value = strtolower( trim( (string) $payload[ $key ] ) );
+			if ( '' !== $value ) {
+				return $value;
+			}
+		}
+
+		return '';
 	}
 
 	/**
@@ -1872,7 +2043,8 @@ class ADVAPAFO_Settings {
 		$resolved = $this->resolve_authenticator_provider_label_from_signals( $provider, $label, $aaguid );
 
 		if ( '' === $resolved ) {
-			$resolved = '' !== $provider ? $provider : $label;
+			$fallback = '' !== $provider ? $provider : $label;
+			$resolved = $this->is_generic_authenticator_placeholder( $fallback ) ? '' : $fallback;
 		}
 
 		if ( '' === $resolved || stripos( $resolved, 'unknown' ) !== false || stripos( $resolved, 'platform authenticator' ) !== false ) {
@@ -1887,6 +2059,35 @@ class ADVAPAFO_Settings {
 		return array(
 			'label' => $resolved,
 			'key'   => $this->normalize_authenticator_provider_key( $resolved ),
+		);
+	}
+
+	/**
+	 * Determine whether a provider/label is only a generic placeholder.
+	 *
+	 * @param string $label Provider or label candidate.
+	 * @return bool
+	 */
+	private function is_generic_authenticator_placeholder( string $label ): bool {
+		$normalized = $this->normalize_provider_string_for_matching( $label );
+		if ( '' === $normalized ) {
+			return true;
+		}
+
+		return in_array(
+			$normalized,
+			array(
+				'passkey',
+				'passkeys',
+				'pass key',
+				'authenticator',
+				'unknown authenticator',
+				'platform authenticator',
+				'security key',
+				'this device',
+				'device',
+			),
+			true
 		);
 	}
 
@@ -1922,8 +2123,8 @@ class ADVAPAFO_Settings {
 
 		$normalized = array();
 		foreach ( $loaded as $aaguid => $provider ) {
-			$key   = $this->normalize_authenticator_aaguid( (string) $aaguid );
-			$name  = trim( (string) $provider );
+			$key  = $this->normalize_authenticator_aaguid( (string) $aaguid );
+			$name = trim( (string) $provider );
 			if ( '' === $key || '' === $name ) {
 				continue;
 			}
@@ -2126,18 +2327,18 @@ class ADVAPAFO_Settings {
 	 */
 	private function get_authenticator_provider_badge_allowed_html(): array {
 		return array(
-			'span'   => array(
+			'span'    => array(
 				'class'       => true,
 				'aria-hidden' => true,
 			),
 			'picture' => array(
 				'class' => true,
 			),
-			'source' => array(
+			'source'  => array(
 				'srcset' => true,
 				'media'  => true,
 			),
-			'img'    => array(
+			'img'     => array(
 				'class'    => true,
 				'src'      => true,
 				'alt'      => true,
@@ -2146,7 +2347,7 @@ class ADVAPAFO_Settings {
 				'loading'  => true,
 				'decoding' => true,
 			),
-			'svg'    => array(
+			'svg'     => array(
 				'viewBox'         => true,
 				'width'           => true,
 				'height'          => true,
@@ -2161,7 +2362,7 @@ class ADVAPAFO_Settings {
 				'fill-opacity'    => true,
 				'xmlns'           => true,
 			),
-			'path'   => array(
+			'path'    => array(
 				'd'               => true,
 				'fill'            => true,
 				'stroke'          => true,
@@ -2170,7 +2371,7 @@ class ADVAPAFO_Settings {
 				'stroke-linejoin' => true,
 				'fill-opacity'    => true,
 			),
-			'circle' => array(
+			'circle'  => array(
 				'cx'           => true,
 				'cy'           => true,
 				'r'            => true,
@@ -2178,7 +2379,7 @@ class ADVAPAFO_Settings {
 				'stroke'       => true,
 				'stroke-width' => true,
 			),
-			'rect'   => array(
+			'rect'    => array(
 				'x'            => true,
 				'y'            => true,
 				'width'        => true,
@@ -2306,8 +2507,8 @@ class ADVAPAFO_Settings {
 	 * Render advanced settings tab.
 	 */
 	private function render_advanced_tab() {
-		$show_separator             = (bool) get_option( 'advapafo_show_separator', true );
-		$conditional_ui_enabled     = (bool) get_option( 'advapafo_conditional_ui_enabled', false );
+		$show_separator         = (bool) get_option( 'advapafo_show_separator', true );
+		$conditional_ui_enabled = (bool) get_option( 'advapafo_conditional_ui_enabled', false );
 		if ( $conditional_ui_enabled ) {
 			$show_separator = false;
 		}
@@ -2611,8 +2812,16 @@ class ADVAPAFO_Settings {
 	 */
 	public function sanitize_show_separator( $value ) {
 		$posted_conditional = null;
-		if ( isset( $_POST['advapafo_conditional_ui_enabled'] ) ) {
-			$raw_conditional    = sanitize_text_field( wp_unslash( $_POST['advapafo_conditional_ui_enabled'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- sanitized setting field submitted to options.php settings endpoint.
+		$has_valid_nonce    = false;
+		$nonce_input        = filter_input( INPUT_POST, '_wpnonce', FILTER_DEFAULT );
+		if ( is_string( $nonce_input ) && '' !== $nonce_input ) {
+			$nonce           = sanitize_text_field( $nonce_input );
+			$has_valid_nonce = (bool) wp_verify_nonce( $nonce, $this->option_group . '-options' );
+		}
+
+		$conditional_input = filter_input( INPUT_POST, 'advapafo_conditional_ui_enabled', FILTER_DEFAULT );
+		if ( $has_valid_nonce && is_string( $conditional_input ) ) {
+			$raw_conditional    = sanitize_text_field( $conditional_input );
 			$posted_conditional = '' !== $raw_conditional && '0' !== $raw_conditional;
 		}
 

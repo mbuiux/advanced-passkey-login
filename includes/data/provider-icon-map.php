@@ -1,8 +1,11 @@
 <?php
+// phpcs:ignoreFile -- Generated file, do not edit manually.
 /**
  * Generated file: provider key to icon asset map.
  * Source: passkeydeveloper/passkey-authenticator-aaguids (aaguid.json).
  * Regenerate with: npm run sync:aaguid-map
+ *
+ * @package AdvancedPasskeyLogin
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
