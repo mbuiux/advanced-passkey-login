@@ -27,14 +27,19 @@ jobs:
 
         REPO="${{ github.repository }}"
         SHA="${GITHUB_SHA}"
-        URL="https://api.github.com/repos/${REPO}/actions/workflows/quality-checks.yml/runs?head_sha=${SHA}&status=completed&per_page=50"
+        URL="https://api.github.com/repos/${REPO}/actions/workflows/quality-checks.yml/runs?head_sha=${SHA}&per_page=50"
 
-        curl -fsSL \
-          -H "Authorization: Bearer ${GH_TOKEN}" \
-          -H "Accept: application/vnd.github+json" \
-          "$URL" > /tmp/quality-runs.json
+        ATTEMPTS=40
+        SLEEP_SECONDS=15
+        FOUND_SUCCESS=0
 
-        python3 - <<'PY'
+        for (( i=1; i<=ATTEMPTS; i++ )); do
+          curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "$URL" > /tmp/quality-runs.json
+
+          if python3 - <<'PY'
         import json
         import sys
 
@@ -43,19 +48,42 @@ jobs:
 
         runs = payload.get('workflow_runs', [])
         if not runs:
-            print('No completed Quality Checks workflow run found for this commit.')
-            sys.exit(1)
+            print('No Quality Checks workflow run found yet for this commit.')
+            sys.exit(2)
 
-        for run in runs:
+        completed = [run for run in runs if run.get('status') == 'completed']
+        if not completed:
+            print('Quality Checks run found but still in progress.')
+            sys.exit(2)
+
+        for run in completed:
             if run.get('conclusion') == 'success':
                 print('Quality Checks passed:', run.get('html_url', ''))
                 sys.exit(0)
 
-        print('Quality Checks found for commit, but none passed.')
-        for run in runs:
+        print('Quality Checks completed for commit, but none passed.')
+        for run in completed:
             print('-', run.get('conclusion'), run.get('html_url', ''))
         sys.exit(1)
         PY
+          then
+            FOUND_SUCCESS=1
+            break
+          else
+            EXIT_CODE=$?
+            if [ "$EXIT_CODE" -eq 2 ] && [ "$i" -lt "$ATTEMPTS" ]; then
+              echo "Waiting for Quality Checks to complete for commit ${SHA} (attempt ${i}/${ATTEMPTS})..."
+              sleep "$SLEEP_SECONDS"
+              continue
+            fi
+            exit "$EXIT_CODE"
+          fi
+        done
+
+        if [ "$FOUND_SUCCESS" -ne 1 ]; then
+          echo "Timed out waiting for Quality Checks to complete successfully."
+          exit 1
+        fi
 
     - name: WordPress.org Plugin Deploy
       id: deploy
