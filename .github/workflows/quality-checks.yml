@@ -125,8 +125,8 @@ jobs:
           cd "$WP_TEST_DIR"
 
           wp plugin check advanced-passkey-login \
-            --exclude-directories=dist,.github,.wordpress-org \
-            --exclude-files=.gitignore,.DS_Store,AGENTS.md,.distignore \
+            --exclude-directories=dist,.github,.wordpress-org,tests,scripts,node_modules \
+            --exclude-files=.gitignore,.DS_Store,AGENTS.md,.distignore,package.json,package-lock.json,tsconfig.json,playwright.config.ts \
             --format=json \
             --allow-root > /tmp/plugin-check-results.raw
 
