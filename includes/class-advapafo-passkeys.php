@@ -6,17 +6,11 @@
  *  - DB table creation (credentials + rate limits)
  *  - AJAX endpoints for registration, login, revocation
  *  - Rate limiting
- *  - User eligibility (configurable by role and filters)
+ *  - User eligibility (configurable by role and centralized configuration)
  *  - Per-user passkey cap (0 means unlimited)
  *
  * Extension points (filters / actions):
- *  - Filter  advapafo_is_eligible_user          ( bool, WP_User )
- *  - Filter  advapafo_max_passkeys_per_user      ( int,  WP_User )
- *  - Filter  advapafo_login_redirect             ( string redirect_url, WP_User )
- *  - Filter  advapafo_passkey_allow_session_establishment ( bool, WP_User, string credential_hash )
- *  - Filter  advapafo_passkey_remember_me        ( bool remember, WP_User )
- *  - Filter  advapafo_passkey_fire_wp_login      ( bool, WP_User )
- *  - Filter  advapafo_passkey_emit_wp_login_failed ( bool, WP_User, string credential_hash, string reason )
+ *  - Configuration advapafo_local_configuration  ( array settings )
  *  - Action  advapafo_passkey_registered         ( int user_id, string credential_hash )
  *  - Action  advapafo_passkey_login_success      ( int user_id, string credential_hash, string device_info )
  *  - Action  advapafo_passkey_session_established ( int user_id, bool remember )
@@ -80,7 +74,7 @@ class ADVAPAFO_Passkeys {
 		if ( defined( 'ADVAPAFO_ENABLED' ) ) {
 			return (bool) ADVAPAFO_ENABLED;
 		}
-		return (int) get_option( 'advapafo_enabled', 1 ) === 1;
+		return (bool) advapafo_get_setting( 'enabled', true );
 	}
 
 	/**
@@ -91,11 +85,11 @@ class ADVAPAFO_Passkeys {
 	 * @return bool
 	 */
 	public static function user_is_eligible( WP_User $user ): bool {
-		$allowed_roles = array_filter( array_map( 'sanitize_key', (array) get_option( 'advapafo_eligible_roles', array( 'administrator' ) ) ) );
+		$allowed_roles = array_filter( array_map( 'sanitize_key', (array) advapafo_get_setting( 'eligible_roles', array( 'administrator' ) ) ) );
 		if ( empty( $allowed_roles ) ) {
 			$allowed_roles = array( 'administrator' );
 		}
-		$eligible = apply_filters( 'advapafo_is_eligible_user', null, $user );
+		$eligible = advapafo_get_setting( 'eligible_user', null, array( 'user' => $user ) );
 		if ( null !== $eligible ) {
 			return (bool) $eligible;
 		}
@@ -585,20 +579,12 @@ class ADVAPAFO_Passkeys {
 	/**
 	 * Whether Conditional UI (passkey autofill) is enabled.
 	 *
-	 * Developers can force-enable/disable this in wp-config or theme/plugin code:
-	 * add_filter( 'advapafo_enable_conditional_ui', '__return_true' );
+	 * Developers can force-enable/disable this through advapafo_local_configuration.
 	 *
 	 * @return bool
 	 */
 	public static function is_conditional_ui_enabled(): bool {
-		$enabled = (bool) get_option( 'advapafo_conditional_ui_enabled', false );
-
-		/**
-		 * Filter whether Conditional UI is enabled for wp-login passkey autofill.
-		 *
-		 * @param bool $enabled Current enabled state from plugin settings.
-		 */
-		return (bool) apply_filters( 'advapafo_enable_conditional_ui', $enabled );
+		return (bool) advapafo_get_setting( 'conditional_ui_enabled', false );
 	}
 
 	// ──────────────────────────────────────────────────────────
@@ -1486,12 +1472,19 @@ class ADVAPAFO_Passkeys {
 				throw new \RuntimeException( 'User is not eligible for passkey login' );
 			}
 
-			$allow_session = (bool) apply_filters( 'advapafo_passkey_allow_session_establishment', true, $user, $cred_hash );
+			$allow_session = (bool) advapafo_get_setting(
+				'passkey_allow_session_establishment',
+				true,
+				array(
+					'user'            => $user,
+					'credential_hash' => $cred_hash,
+				)
+			);
 			if ( ! $allow_session ) {
 				throw new \RuntimeException( 'Passkey session was denied by policy.' );
 			}
 
-			$remember = (bool) apply_filters( 'advapafo_passkey_remember_me', false, $user );
+			$remember = (bool) advapafo_get_setting( 'passkey_remember_me', false, array( 'user' => $user ) );
 			$this->establish_authenticated_session( $user, $remember, $cred_hash );
 
 			// Update sign count and last-used timestamp.
@@ -1549,7 +1542,7 @@ class ADVAPAFO_Passkeys {
 
 			// Fall back to the settings-page redirect URL.
 			if ( '' === $redirect ) {
-				$settings_redirect = (string) get_option( 'advapafo_login_redirect', '' );
+				$settings_redirect = (string) advapafo_get_setting( 'login_redirect', '', array( 'apply_legacy' => false ) );
 				if ( '' !== $settings_redirect ) {
 					$redirect = $this->safe_redirect( $settings_redirect );
 				}
@@ -1560,14 +1553,18 @@ class ADVAPAFO_Passkeys {
 				$redirect = $this->safe_redirect( $default, admin_url() );
 			}
 
-			/**
-			 * Filters the URL the user is sent to after a successful passkey login.
-			 *
-			 * @param string  $redirect Redirect URL.
-			 * @param WP_User $user     Logged-in user.
-			 */
 			// Re-validate after filter to prevent open-redirect via third-party hooks.
-			$redirect = $this->safe_redirect( (string) apply_filters( 'advapafo_login_redirect', $redirect, $user ), admin_url() );
+			$redirect = $this->safe_redirect(
+				(string) advapafo_get_setting(
+					'login_redirect',
+					$redirect,
+					array(
+						'user'          => $user,
+						'skip_database' => true,
+					)
+				),
+				admin_url()
+			);
 
 			wp_send_json_success( array( 'redirect' => $redirect ) );
 
@@ -1579,7 +1576,15 @@ class ADVAPAFO_Passkeys {
 			do_action( 'advapafo_passkey_login_failed', $failed_user_id, $cred_hash, $reason );
 
 			if ( $failed_user instanceof WP_User ) {
-				$emit_wp_login_failed = (bool) apply_filters( 'advapafo_passkey_emit_wp_login_failed', false, $failed_user, $cred_hash, $reason );
+				$emit_wp_login_failed = (bool) advapafo_get_setting(
+					'passkey_emit_wp_login_failed',
+					false,
+					array(
+						'user'            => $failed_user,
+						'credential_hash' => $cred_hash,
+						'reason'          => $reason,
+					)
+				);
 				if ( $emit_wp_login_failed ) {
 					do_action( 'wp_login_failed', $failed_user->user_login ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- optional core hook for lockout ecosystem compatibility.
 				}
@@ -1795,7 +1800,7 @@ class ADVAPAFO_Passkeys {
 		if ( defined( 'ADVAPAFO_CHALLENGE_TTL' ) && (int) ADVAPAFO_CHALLENGE_TTL > 30 ) {
 			return (int) ADVAPAFO_CHALLENGE_TTL;
 		}
-		$opt = (int) get_option( 'advapafo_challenge_ttl', 0 );
+		$opt = (int) advapafo_get_setting( 'challenge_ttl', 0 );
 		if ( $opt >= 30 ) {
 			return min( 600, $opt );
 		}
@@ -1808,7 +1813,7 @@ class ADVAPAFO_Passkeys {
 	 * @return int
 	 */
 	private function get_login_challenge_ttl(): int {
-		$opt = (int) get_option( 'advapafo_login_challenge_ttl', 0 );
+		$opt = (int) advapafo_get_setting( 'login_challenge_ttl', 0 );
 		if ( $opt >= 30 ) {
 			return min( 1200, $opt );
 		}
@@ -1822,7 +1827,7 @@ class ADVAPAFO_Passkeys {
 	 * @return int
 	 */
 	private function get_registration_challenge_ttl(): int {
-		$opt = (int) get_option( 'advapafo_registration_challenge_ttl', 0 );
+		$opt = (int) advapafo_get_setting( 'registration_challenge_ttl', 0 );
 		if ( $opt >= 30 ) {
 			return min( 1200, $opt );
 		}
@@ -1836,7 +1841,7 @@ class ADVAPAFO_Passkeys {
 	 * @return string
 	 */
 	private function get_user_verification(): string {
-		$opt = strtolower( (string) get_option( 'advapafo_user_verification', '' ) );
+		$opt = strtolower( (string) advapafo_get_setting( 'user_verification', '' ) );
 		if ( in_array( $opt, array( 'required', 'preferred', 'discouraged' ), true ) ) {
 			return $opt;
 		}
@@ -1916,12 +1921,12 @@ class ADVAPAFO_Passkeys {
 		 * @param bool    $eligible Whether the user is eligible.
 		 * @param WP_User $user     The user in question.
 		 */
-		$eligible = apply_filters( 'advapafo_is_eligible_user', null, $user );
+		$eligible = advapafo_get_setting( 'eligible_user', null, array( 'user' => $user ) );
 		if ( null !== $eligible ) {
 			return (bool) $eligible;
 		}
 
-		$allowed_roles = array_filter( array_map( 'sanitize_key', (array) get_option( 'advapafo_eligible_roles', array( 'administrator' ) ) ) );
+		$allowed_roles = array_filter( array_map( 'sanitize_key', (array) advapafo_get_setting( 'eligible_roles', array( 'administrator' ) ) ) );
 		if ( empty( $allowed_roles ) ) {
 			$allowed_roles = array( 'administrator' );
 		}
@@ -1942,13 +1947,7 @@ class ADVAPAFO_Passkeys {
 		 * @param int     $max  Current cap.
 		 * @param WP_User $user The user.
 		 */
-		$filtered = apply_filters( 'advapafo_max_passkeys_per_user', null, $user );
-		if ( null !== $filtered ) {
-			$filtered = (int) $filtered;
-			return $filtered <= 0 ? PHP_INT_MAX : max( 1, $filtered );
-		}
-
-		$setting = (int) get_option( 'advapafo_max_passkeys_per_user', self::DEFAULT_MAX_PASSKEYS );
+		$setting = (int) advapafo_get_setting( 'max_passkeys_per_user', self::DEFAULT_MAX_PASSKEYS, array( 'user' => $user ) );
 		return $setting <= 0 ? PHP_INT_MAX : max( 1, $setting );
 	}
 
@@ -1992,7 +1991,7 @@ class ADVAPAFO_Passkeys {
 	 */
 	private function get_last_used_pill_label( ?WP_User $user ): string {
 		$default_label = __( 'Last used', 'advanced-passkey-login' );
-		$filtered      = apply_filters( 'advapafo_last_used_pill_label', $default_label, $user );
+		$filtered      = advapafo_get_setting( 'last_used_pill_label', $default_label, array( 'user' => $user ) );
 		$label         = is_string( $filtered ) ? sanitize_text_field( $filtered ) : '';
 
 		return '' !== $label ? $label : $default_label;
@@ -2005,7 +2004,7 @@ class ADVAPAFO_Passkeys {
 	 * @return int
 	 */
 	private function get_last_used_pill_freshness_days( ?WP_User $user ): int {
-		$days = (int) apply_filters( 'advapafo_last_used_pill_freshness_days', self::LAST_USED_PILL_DEFAULT_FRESHNESS_DAYS, $user );
+		$days = (int) advapafo_get_setting( 'last_used_pill_freshness_days', self::LAST_USED_PILL_DEFAULT_FRESHNESS_DAYS, array( 'user' => $user ) );
 
 		if ( $days < 0 ) {
 			$days = 0;
@@ -2026,7 +2025,15 @@ class ADVAPAFO_Passkeys {
 		$cutoff         = time() - ( $freshness_days * DAY_IN_SECONDS );
 		$base_visible   = $timestamp > 0 && $timestamp >= $cutoff;
 
-		return (bool) apply_filters( 'advapafo_last_used_pill_visible', $base_visible, $timestamp, $freshness_days, $user );
+		return (bool) advapafo_get_setting(
+			'last_used_pill_visible',
+			$base_visible,
+			array(
+				'user'           => $user,
+				'timestamp'      => $timestamp,
+				'freshness_days' => $freshness_days,
+			)
+		);
 	}
 
 	/**
@@ -2517,12 +2524,12 @@ class ADVAPAFO_Passkeys {
 	 * @return int
 	 */
 	private function get_rate_window(): int {
-		$opt = (int) get_option( 'advapafo_rate_limit_window', 0 );
+		$opt = (int) advapafo_get_setting( 'rate_limit_window', 0 );
 		if ( $opt >= 60 ) {
 			return min( 3600, $opt );
 		}
 		// Backward compatibility with pre-1.1 option keys.
-		$opt = (int) get_option( 'advapafo_rate_window', 0 );
+		$opt = (int) advapafo_get_setting( 'rate_window', 0 );
 		if ( $opt >= 60 ) {
 			return min( 3600, $opt );
 		}
@@ -2538,12 +2545,12 @@ class ADVAPAFO_Passkeys {
 	 * @return int
 	 */
 	private function get_rate_max_attempts(): int {
-		$opt = (int) get_option( 'advapafo_rate_limit_max_failures', 0 );
+		$opt = (int) advapafo_get_setting( 'rate_limit_max_failures', 0 );
 		if ( $opt >= 1 ) {
 			return min( 50, $opt );
 		}
 		// Backward compatibility with pre-1.1 option keys.
-		$opt = (int) get_option( 'advapafo_rate_max_attempts', 0 );
+		$opt = (int) advapafo_get_setting( 'rate_max_attempts', 0 );
 		if ( $opt >= 1 ) {
 			return min( 50, $opt );
 		}
@@ -2559,12 +2566,12 @@ class ADVAPAFO_Passkeys {
 	 * @return int
 	 */
 	private function get_rate_lockout(): int {
-		$opt = (int) get_option( 'advapafo_rate_limit_lockout', 0 );
+		$opt = (int) advapafo_get_setting( 'rate_limit_lockout', 0 );
 		if ( $opt >= 60 ) {
 			return min( 86400, $opt );
 		}
 		// Backward compatibility with pre-1.1 option keys.
-		$opt = (int) get_option( 'advapafo_rate_lockout', 0 );
+		$opt = (int) advapafo_get_setting( 'rate_lockout', 0 );
 		if ( $opt >= 60 ) {
 			return min( 86400, $opt );
 		}
@@ -2753,8 +2760,10 @@ class ADVAPAFO_Passkeys {
 			return true;
 		}
 
+		$enforce_https = (bool) advapafo_get_setting( 'enforce_https', true );
+
 		// Allow HTTP only for local/dev-style environments when explicitly enabled.
-		if ( defined( 'ADVAPAFO_ALLOW_HTTP' ) && ADVAPAFO_ALLOW_HTTP ) {
+		if ( ( ! $enforce_https || ( defined( 'ADVAPAFO_ALLOW_HTTP' ) && ADVAPAFO_ALLOW_HTTP ) ) ) {
 			if ( function_exists( 'wp_get_environment_type' ) && 'production' === wp_get_environment_type() ) {
 				return false;
 			}

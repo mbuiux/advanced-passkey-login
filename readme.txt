@@ -35,6 +35,7 @@ Unlike basic alternatives, this plugin features intelligent, dependency-aware in
 * **Theme Template Overrides:** Override the login button template via `/advanced-passkeys/login/button.php` in your active theme.
 * **Admin Dashboard Overview:** Keep track of credential performance with an Authenticator Overview card and Last Login activity logs.
 * **Granular Role Controls:** Easily configure exactly which user roles are permitted to use passkey authentication (Default: Administrators).
+* **Code-Managed Configuration:** Developers can hardcode passkey settings via PHP for high-velocity agency, multisite, and version-controlled deployments.
 * **Brute-Force Rate Limiting:** Hardened local security with built-in login rate-limiting and automated daily log cleanups.
 * **Multisite Compatible:** Network-aware provisioning instantly configures security settings for newly created network sites.
 * **Clean Performance & Housekeeping:** Lightweight footprint with a clean uninstall routine that leaves zero orphaned tables or options behind.
@@ -90,6 +91,10 @@ The plugin relies on `openssl`, `mbstring`, and `json`. These core extensions ar
 = Can I control which user roles can use passkeys? =
 
 Yes. Navigate to **Settings > Advanced Passkeys for Secure Login > Eligible Roles**. While it defaults strictly to Administrators, you can provision passkeys for any core or custom role on your site.
+
+= Can developers manage plugin settings in code? =
+
+Yes. Developers can use the centralized `advapafo_local_configuration` filter or the `ADVAPAFO_SETTINGS` constant to manage settings from PHP. Code-managed settings take priority over database options. When a setting is managed in code, the matching admin field displays **Managed via code** and becomes read-only or disabled.
 
 = Which shortcodes are available? =
 
@@ -161,46 +166,94 @@ When enabled in Settings > Advanced:
 * The login OR separator is automatically disabled.
 * Password fallback remains available.
 
-== Developer Hooks: Last Used Pill ==
+== Developer Configuration ==
 
-Developers can use these filters inside a theme or functionality plugin to globally customize or suppress the login form's Last used passkey indicator pill.
+Advanced Passkeys supports code-managed configuration for developers, agencies, and teams that deploy WordPress settings through version control. This is useful when you need the same passkey policy across many sites without relying on manual database option changes.
 
-= Available filters =
+= Evaluation order =
 
-* `advapafo_last_used_pill_freshness_days` — default 90 days
-* `advapafo_last_used_pill_visible` — final on/off override
-* `advapafo_last_used_pill_label` — customize label text
+When the plugin resolves a setting, it uses this order:
 
+1. `advapafo_local_configuration` filter
+2. `ADVAPAFO_SETTINGS` constant
+3. `advapafo_settings` option array
+4. Existing individual `advapafo_*` database option
+5. Plugin default
 
-= Example implementation =
+Code-managed values are resolved per setting key. If you override only `challenge_ttl`, the remaining settings continue to fall back to the database or plugin defaults.
+
+= Managed admin fields =
+
+When a setting is provided by `advapafo_local_configuration` or `ADVAPAFO_SETTINGS`, the matching admin control is locked and marked **Managed via code**. This prevents accidental dashboard edits from implying that a database value controls a setting that is actually dictated by PHP.
+
+= Example: force HTTPS and administrator-only passkeys =
+
+Add this to a small functionality plugin or your theme's `functions.php`:
 
     <?php
-    /**
-     * Example customization for Last used login pill.
-     */
-
-    // Show pill if passkey login is within 120 days.
-    add_filter( 'advapafo_last_used_pill_freshness_days', function ( $days, $user ) {
-        unset( $user );
-        return 120;
-    }, 10, 2 );
-
-    // Hide pill for administrator accounts.
-    add_filter( 'advapafo_last_used_pill_visible', function ( $visible, $timestamp, $freshness_days, $user ) {
-        unset( $timestamp, $freshness_days );
-
-        if ( $user instanceof WP_User && in_array( 'administrator', (array) $user->roles, true ) ) {
-            return false;
+    add_filter(
+        'advapafo_local_configuration',
+        static function ( array $configuration ): array {
+            return array_replace(
+                $configuration,
+                array(
+                    'enforce_https'  => true,
+                    'eligible_roles' => array( 'administrator' ),
+                )
+            );
         }
+    );
 
-        return $visible;
-    }, 10, 4 );
+= Example: wp-config.php constant =
 
-    // Label override.
-    add_filter( 'advapafo_last_used_pill_label', function ( $label, $user ) {
-        unset( $user );
-        return 'Previously used';
-    }, 10, 2 );
+For deployments that prefer constants, define an array in `wp-config.php`:
+
+    define(
+        'ADVAPAFO_SETTINGS',
+        array(
+            'conditional_ui_enabled'     => true,
+            'login_challenge_ttl'        => 300,
+            'registration_challenge_ttl' => 300,
+            'max_passkeys_per_user'      => 0,
+        )
+    );
+
+= Common configuration keys =
+
+* `enabled` — enable or disable passkey features.
+* `eligible_roles` — array of role slugs allowed to use passkeys.
+* `max_passkeys_per_user` — maximum passkeys per user; `0` means unlimited.
+* `conditional_ui_enabled` — enable browser-native passkey autofill on `wp-login.php`.
+* `show_separator` — show or hide the login OR separator.
+* `challenge_ttl` — shared challenge timeout fallback in seconds.
+* `login_challenge_ttl` — login challenge timeout in seconds.
+* `registration_challenge_ttl` — registration challenge timeout in seconds.
+* `user_verification` — one of `required`, `preferred`, or `discouraged`.
+* `rp_name` — custom relying party name.
+* `rp_id` — custom relying party ID for domain/subdomain setups.
+* `rate_limit_window` — failed-attempt tracking window in seconds.
+* `rate_limit_max_failures` — failures allowed before lockout.
+* `rate_limit_lockout` — lockout duration in seconds.
+* `login_redirect` — fallback redirect URL after passkey login.
+* `last_used_pill_label` — label for the login form's Last used passkey indicator.
+* `last_used_pill_freshness_days` — how long the Last used indicator remains fresh.
+
+= Last used pill example =
+
+    <?php
+    add_filter(
+        'advapafo_local_configuration',
+        static function ( array $configuration ): array {
+            $configuration['last_used_pill_label']          = 'Previously used';
+            $configuration['last_used_pill_freshness_days'] = 120;
+
+            return $configuration;
+        }
+    );
+
+= Legacy filters =
+
+Legacy developer filters such as `advapafo_max_passkeys_per_user`, `advapafo_enable_conditional_ui`, and the Last used pill filters remain supported for backward compatibility. New code should prefer `advapafo_local_configuration` so configuration is centralized and easier to audit.
 
 == Screenshots ==
 
@@ -215,6 +268,9 @@ Developers can use these filters inside a theme or functionality plugin to globa
 == Changelog ==
 
 = 1.1.10 =
+* Added: code-managed local configuration via `advapafo_local_configuration` and `ADVAPAFO_SETTINGS`.
+* Added: admin UI indicators and locked controls for settings managed by code.
+* Improved: developer configuration filters now resolve through the centralized settings getter for cleaner policy management.
 * Fixed: conditional UI login elements now remain hidden consistently when conditional UI is enabled.
 * Improved: authenticator provider reporting resolves legacy credential/log payload variants more reliably.
 * Improved: registration errors now show friendlier passkey guidance for browser invalid-state failures.
@@ -274,7 +330,7 @@ Developers can use these filters inside a theme or functionality plugin to globa
 == Upgrade Notice ==
 
 = 1.1.10 =
-Recommended update: improves conditional UI consistency, legacy authenticator mapping reliability, and registration error clarity.
+Recommended update: adds code-managed configuration, improves conditional UI consistency, legacy authenticator mapping reliability, and registration error clarity.
 
 = 1.1.9 =
 Recommended update: refines admin footer link/rating styles for better settings-page visibility.

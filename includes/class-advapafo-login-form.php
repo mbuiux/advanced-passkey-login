@@ -35,7 +35,7 @@ class ADVAPAFO_Login_Form {
 			return;
 		}
 
-		$autocomplete_value = (string) apply_filters( 'advapafo_username_autocomplete_value', 'username webauthn' );
+		$autocomplete_value = (string) advapafo_get_setting( 'username_autocomplete_value', 'username webauthn' );
 
 		wp_register_script( 'advapafo-login-username-autocomplete', false, array(), defined( 'ADVAPAFO_VERSION' ) ? ADVAPAFO_VERSION : '1.0.0', true );
 		wp_enqueue_script( 'advapafo-login-username-autocomplete' );

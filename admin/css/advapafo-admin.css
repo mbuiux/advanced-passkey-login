@@ -655,6 +655,20 @@
     border-color: rgba(21, 128, 61, 0.16);
 }
 
+.advapafo-badge--managed-code {
+    color: #73510b;
+    background: #fff7d6;
+    border-color: #f4d469;
+    margin-left: 8px;
+}
+
+.advapafo-field input[readonly],
+.advapafo-field select:disabled {
+    color: var(--advapafo-muted);
+    background-color: var(--advapafo-muted-bg);
+    cursor: not-allowed;
+}
+
 .advapafo-button,
 .wp-core-ui .advapafo-save-button {
     display: inline-flex !important;

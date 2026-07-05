@@ -197,6 +197,7 @@ foreach ( array(
 	'ADVAPAFO_RATE_MAX_ATTEMPTS',
 	'ADVAPAFO_RATE_LOCKOUT',
 	'ADVAPAFO_ENABLE_LOGGING',
+	'ADVAPAFO_SETTINGS',
 ) as $advapafo_env_const ) {
 	if ( ! defined( $advapafo_env_const ) ) {
 		$advapafo_env_value = getenv( $advapafo_env_const );
@@ -207,6 +208,425 @@ foreach ( array(
 }
 // phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.VariableConstantNameFound
 unset( $advapafo_env_const, $advapafo_env_value );
+
+/**
+ * Map logical setting keys to stored option names and defaults.
+ *
+ * @return array<string,array{option:string,default:mixed}>
+ */
+function advapafo_get_setting_registry(): array {
+	return array(
+		'enabled'                             => array(
+			'option'  => 'advapafo_enabled',
+			'default' => true,
+		),
+		'show_separator'                      => array(
+			'option'  => 'advapafo_show_separator',
+			'default' => true,
+		),
+		'conditional_ui_enabled'              => array(
+			'option'  => 'advapafo_conditional_ui_enabled',
+			'default' => false,
+		),
+		'show_setup_notice'                   => array(
+			'option'  => 'advapafo_show_setup_notice',
+			'default' => true,
+		),
+		'eligible_roles'                      => array(
+			'option'  => 'advapafo_eligible_roles',
+			'default' => array( 'administrator' ),
+		),
+		'eligible_user'                       => array(
+			'option'  => '',
+			'default' => null,
+		),
+		'max_passkeys_per_user'               => array(
+			'option'  => 'advapafo_max_passkeys_per_user',
+			'default' => 0,
+		),
+		'user_verification'                   => array(
+			'option'  => 'advapafo_user_verification',
+			'default' => 'required',
+		),
+		'button_style'                        => array(
+			'option'  => 'advapafo_button_style',
+			'default' => 'black',
+		),
+		'rp_name'                             => array(
+			'option'  => 'advapafo_rp_name',
+			'default' => '',
+		),
+		'rp_id'                               => array(
+			'option'  => 'advapafo_rp_id',
+			'default' => '',
+		),
+		'challenge_ttl'                       => array(
+			'option'  => 'advapafo_challenge_ttl',
+			'default' => 300,
+		),
+		'login_challenge_ttl'                 => array(
+			'option'  => 'advapafo_login_challenge_ttl',
+			'default' => 300,
+		),
+		'registration_challenge_ttl'          => array(
+			'option'  => 'advapafo_registration_challenge_ttl',
+			'default' => 300,
+		),
+		'rate_limit_window'                   => array(
+			'option'  => 'advapafo_rate_limit_window',
+			'default' => 300,
+		),
+		'rate_window'                         => array(
+			'option'  => 'advapafo_rate_window',
+			'default' => 300,
+		),
+		'rate_limit_max_failures'             => array(
+			'option'  => 'advapafo_rate_limit_max_failures',
+			'default' => 5,
+		),
+		'rate_max_attempts'                   => array(
+			'option'  => 'advapafo_rate_max_attempts',
+			'default' => 5,
+		),
+		'rate_limit_lockout'                  => array(
+			'option'  => 'advapafo_rate_limit_lockout',
+			'default' => 900,
+		),
+		'rate_lockout'                        => array(
+			'option'  => 'advapafo_rate_lockout',
+			'default' => 900,
+		),
+		'activity_logging_enabled'            => array(
+			'option'  => 'advapafo_activity_logging_enabled',
+			'default' => true,
+		),
+		'log_retention_days'                  => array(
+			'option'  => 'advapafo_log_retention_days',
+			'default' => 90,
+		),
+		'login_redirect'                      => array(
+			'option'  => 'advapafo_login_redirect',
+			'default' => '',
+		),
+		'username_autocomplete_value'         => array(
+			'option'  => '',
+			'default' => 'username webauthn',
+		),
+		'passkey_allow_session_establishment' => array(
+			'option'  => '',
+			'default' => true,
+		),
+		'passkey_remember_me'                 => array(
+			'option'  => '',
+			'default' => false,
+		),
+		'passkey_emit_wp_login_failed'        => array(
+			'option'  => '',
+			'default' => false,
+		),
+		'last_used_pill_label'                => array(
+			'option'  => '',
+			'default' => '',
+		),
+		'last_used_pill_freshness_days'       => array(
+			'option'  => '',
+			'default' => 90,
+		),
+		'last_used_pill_visible'              => array(
+			'option'  => '',
+			'default' => null,
+		),
+		'authenticator_provider_label'        => array(
+			'option'  => '',
+			'default' => '',
+		),
+		'authenticator_aaguid_map'            => array(
+			'option'  => '',
+			'default' => array(),
+		),
+		'enforce_https'                       => array(
+			'option'  => 'advapafo_enforce_https',
+			'default' => true,
+		),
+		'enable_woocommerce_support'          => array(
+			'option'  => 'advapafo_enable_woocommerce_support',
+			'default' => true,
+		),
+		'enable_edd_support'                  => array(
+			'option'  => 'advapafo_enable_edd_support',
+			'default' => true,
+		),
+		'enable_memberpress_support'          => array(
+			'option'  => 'advapafo_enable_memberpress_support',
+			'default' => true,
+		),
+		'enable_ultimate_member_support'      => array(
+			'option'  => 'advapafo_enable_ultimate_member_support',
+			'default' => true,
+		),
+		'enable_learndash_support'            => array(
+			'option'  => 'advapafo_enable_learndash_support',
+			'default' => true,
+		),
+		'enable_buddyboss_support'            => array(
+			'option'  => 'advapafo_enable_buddyboss_support',
+			'default' => true,
+		),
+		'enable_gravityforms_support'         => array(
+			'option'  => 'advapafo_enable_gravityforms_support',
+			'default' => true,
+		),
+		'enable_pmp_support'                  => array(
+			'option'  => 'advapafo_enable_pmp_support',
+			'default' => true,
+		),
+	);
+}
+
+/**
+ * Normalize a setting key from plugin option names or local configuration keys.
+ *
+ * @param string $setting_key Setting key.
+ * @return string
+ */
+function advapafo_normalize_setting_key( $setting_key ): string {
+	$setting_key = sanitize_key( (string) $setting_key );
+
+	if ( str_starts_with( $setting_key, 'advapafo_' ) ) {
+		$setting_key = substr( $setting_key, 9 );
+	}
+
+	return $setting_key;
+}
+
+/**
+ * Normalize local configuration arrays from filters or constants.
+ *
+ * @param mixed $configuration Raw configuration value.
+ * @return array<string,mixed>
+ */
+function advapafo_normalize_local_configuration( $configuration ): array {
+	if ( is_string( $configuration ) ) {
+		$maybe_unserialized = maybe_unserialize( $configuration );
+		if ( is_array( $maybe_unserialized ) ) {
+			$configuration = $maybe_unserialized;
+		} else {
+			$maybe_json    = json_decode( $configuration, true );
+			$configuration = is_array( $maybe_json ) ? $maybe_json : array();
+		}
+	}
+
+	if ( ! is_array( $configuration ) ) {
+		return array();
+	}
+
+	$normalized = array();
+	foreach ( $configuration as $key => $value ) {
+		$normalized_key = advapafo_normalize_setting_key( (string) $key );
+		if ( '' !== $normalized_key ) {
+			$normalized[ $normalized_key ] = $value;
+		}
+	}
+
+	return $normalized;
+}
+
+/**
+ * Get the effective local configuration supplied by PHP code.
+ *
+ * @return array<string,mixed>
+ */
+function advapafo_get_local_configuration(): array {
+	$filter_configuration = advapafo_normalize_local_configuration(
+		apply_filters( 'advapafo_local_configuration', array() )
+	);
+
+	$constant_configuration = defined( 'ADVAPAFO_SETTINGS' )
+		? advapafo_normalize_local_configuration( ADVAPAFO_SETTINGS )
+		: array();
+
+	return array(
+		'filter'   => $filter_configuration,
+		'constant' => $constant_configuration,
+	);
+}
+
+/**
+ * Check whether a specific setting is dictated by local PHP configuration.
+ *
+ * @param string $setting_key Setting key.
+ * @return bool
+ */
+function advapafo_is_setting_overridden( $setting_key ): bool {
+	$setting_key   = advapafo_normalize_setting_key( $setting_key );
+	$configuration = advapafo_get_local_configuration();
+
+	return array_key_exists( $setting_key, $configuration['filter'] )
+		|| array_key_exists( $setting_key, $configuration['constant'] );
+}
+
+/**
+ * Apply legacy configuration filters from a single compatibility layer.
+ *
+ * Local configuration and constants intentionally bypass these legacy filters.
+ * This keeps code-level deployments deterministic while preserving existing
+ * extension callbacks for sites that already use them.
+ *
+ * @param string              $setting_key Setting key.
+ * @param mixed               $value Current resolved value.
+ * @param array<string,mixed> $context Optional contextual values.
+ * @return mixed
+ */
+function advapafo_apply_legacy_setting_filter( string $setting_key, $value, array $context = array() ) {
+	$user            = $context['user'] ?? null;
+	$credential_hash = isset( $context['credential_hash'] ) ? (string) $context['credential_hash'] : '';
+	$reason          = isset( $context['reason'] ) ? (string) $context['reason'] : '';
+
+	switch ( $setting_key ) {
+		case 'conditional_ui_enabled':
+			return apply_filters( 'advapafo_enable_conditional_ui', (bool) $value );
+
+		case 'eligible_user':
+			return $user instanceof WP_User
+				? apply_filters( 'advapafo_is_eligible_user', $value, $user )
+				: $value;
+
+		case 'max_passkeys_per_user':
+			$filtered = $user instanceof WP_User
+				? apply_filters( 'advapafo_max_passkeys_per_user', null, $user )
+				: null;
+
+			return null !== $filtered ? $filtered : $value;
+
+		case 'username_autocomplete_value':
+			return apply_filters( 'advapafo_username_autocomplete_value', (string) $value );
+
+		case 'passkey_allow_session_establishment':
+			return $user instanceof WP_User
+				? apply_filters( 'advapafo_passkey_allow_session_establishment', (bool) $value, $user, $credential_hash )
+				: $value;
+
+		case 'passkey_remember_me':
+			return $user instanceof WP_User
+				? apply_filters( 'advapafo_passkey_remember_me', (bool) $value, $user )
+				: $value;
+
+		case 'login_redirect':
+			return $user instanceof WP_User
+				? apply_filters( 'advapafo_login_redirect', (string) $value, $user )
+				: $value;
+
+		case 'passkey_emit_wp_login_failed':
+			return $user instanceof WP_User
+				? apply_filters( 'advapafo_passkey_emit_wp_login_failed', (bool) $value, $user, $credential_hash, $reason )
+				: $value;
+
+		case 'last_used_pill_label':
+			return apply_filters( 'advapafo_last_used_pill_label', (string) $value, $user instanceof WP_User ? $user : null );
+
+		case 'last_used_pill_freshness_days':
+			return apply_filters( 'advapafo_last_used_pill_freshness_days', (int) $value, $user instanceof WP_User ? $user : null );
+
+		case 'last_used_pill_visible':
+			return apply_filters(
+				'advapafo_last_used_pill_visible',
+				(bool) $value,
+				isset( $context['timestamp'] ) ? (int) $context['timestamp'] : 0,
+				isset( $context['freshness_days'] ) ? (int) $context['freshness_days'] : 0,
+				$user instanceof WP_User ? $user : null
+			);
+
+		case 'authenticator_provider_label':
+			return apply_filters(
+				'advapafo_authenticator_provider_label',
+				(string) $value,
+				isset( $context['provider'] ) ? (string) $context['provider'] : '',
+				isset( $context['label'] ) ? (string) $context['label'] : ''
+			);
+
+		case 'authenticator_aaguid_map':
+			return apply_filters( 'advapafo_authenticator_aaguid_map', is_array( $value ) ? $value : array() );
+	}
+
+	return $value;
+}
+
+// phpcs:disable Universal.NamingConventions.NoReservedKeywordParameterNames.defaultFound -- Public API intentionally uses the documented $default getter argument.
+/**
+ * Get one setting using local code overrides before database fallback.
+ *
+ * Evaluation order: advapafo_local_configuration filter, ADVAPAFO_SETTINGS
+ * constant, advapafo_settings option array, mapped legacy option, default.
+ *
+ * @param string              $setting_key Setting key, with or without advapafo_ prefix.
+ * @param mixed               $default Default value.
+ * @param array<string,mixed> $context Optional contextual values and lookup flags.
+ * @return mixed
+ */
+function advapafo_get_setting( $setting_key, $default = null, array $context = array() ) {
+	$setting_key = advapafo_normalize_setting_key( $setting_key );
+	if ( '' === $setting_key ) {
+		return $default;
+	}
+
+	$registry         = advapafo_get_setting_registry();
+	$registered       = $registry[ $setting_key ] ?? null;
+	$resolved_default = null !== $default ? $default : ( $registered['default'] ?? null );
+	$configuration    = advapafo_get_local_configuration();
+	$apply_legacy     = ! array_key_exists( 'apply_legacy', $context ) || (bool) $context['apply_legacy'];
+	$skip_database    = ! empty( $context['skip_database'] );
+
+	if ( array_key_exists( $setting_key, $configuration['filter'] ) ) {
+		return $configuration['filter'][ $setting_key ];
+	}
+
+	if ( array_key_exists( $setting_key, $configuration['constant'] ) ) {
+		return $configuration['constant'][ $setting_key ];
+	}
+
+	$resolved_value = $resolved_default;
+
+	if ( ! $skip_database ) {
+		$settings_option = get_option( 'advapafo_settings', array() );
+		if ( is_array( $settings_option ) ) {
+			$settings_option = advapafo_normalize_local_configuration( $settings_option );
+			if ( array_key_exists( $setting_key, $settings_option ) ) {
+				$resolved_value = $settings_option[ $setting_key ];
+				return $apply_legacy ? advapafo_apply_legacy_setting_filter( $setting_key, $resolved_value, $context ) : $resolved_value;
+			}
+		}
+
+		if ( ! empty( $registered['option'] ) ) {
+			$resolved_value = get_option( $registered['option'], $resolved_default );
+		}
+	}
+
+	return $apply_legacy ? advapafo_apply_legacy_setting_filter( $setting_key, $resolved_value, $context ) : $resolved_value;
+}
+// phpcs:enable Universal.NamingConventions.NoReservedKeywordParameterNames.defaultFound
+
+/**
+ * Render the admin badge used beside code-managed settings.
+ *
+ * @param string|array<int,string> $setting_key Setting key or related keys.
+ */
+function advapafo_render_managed_setting_badge( $setting_key ): void {
+	$setting_keys = (array) $setting_key;
+	$is_managed   = false;
+
+	foreach ( $setting_keys as $key ) {
+		if ( advapafo_is_setting_overridden( (string) $key ) ) {
+			$is_managed = true;
+			break;
+		}
+	}
+
+	if ( ! $is_managed ) {
+		return;
+	}
+
+	echo '<span class="advapafo-badge advapafo-badge--managed-code">' . esc_html__( 'Managed via code', 'advanced-passkey-login' ) . '</span>';
+}
 
 // ──────────────────────────────────────────────────────────────
 // Composer autoload (lbuchs/webauthn)

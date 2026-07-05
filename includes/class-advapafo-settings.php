@@ -765,14 +765,14 @@ class ADVAPAFO_Settings {
 	 */
 	private function render_preserved_hidden_fields( $active_tab ) {
 		if ( 'advanced' === $active_tab ) {
-			$enabled              = (bool) get_option( 'advapafo_enabled', true );
-			$show_setup_notice    = (bool) get_option( 'advapafo_show_setup_notice', true );
+			$enabled              = (bool) advapafo_get_setting( 'enabled', true );
+			$show_setup_notice    = (bool) advapafo_get_setting( 'show_setup_notice', true );
 			$integration_settings = class_exists( 'ADVAPAFO_Integration_Manager' ) && method_exists( 'ADVAPAFO_Integration_Manager', 'get_settings_registry' )
 				? ADVAPAFO_Integration_Manager::get_settings_registry()
 				: array();
-			$roles                = (array) get_option( 'advapafo_eligible_roles', array( 'administrator' ) );
-			$max_passkeys         = absint( get_option( 'advapafo_max_passkeys_per_user', 0 ) );
-			$verification         = get_option( 'advapafo_user_verification', 'required' );
+			$roles                = (array) advapafo_get_setting( 'eligible_roles', array( 'administrator' ) );
+			$max_passkeys         = absint( advapafo_get_setting( 'max_passkeys_per_user', 0 ) );
+			$verification         = advapafo_get_setting( 'user_verification', 'required' );
 
 			echo '<input type="hidden" name="advapafo_enabled" value="' . esc_attr( $enabled ? '1' : '0' ) . '" />';
 			echo '<input type="hidden" name="advapafo_show_setup_notice" value="' . esc_attr( $show_setup_notice ? '1' : '0' ) . '" />';
@@ -786,7 +786,7 @@ class ADVAPAFO_Settings {
 
 				$dependency_active = ! empty( $integration_setting['dependency_active'] );
 				$master_value      = $dependency_active
-					? (bool) get_option( $master_option, ! empty( $integration_setting['default_master'] ) )
+					? (bool) advapafo_get_setting( $master_option, ! empty( $integration_setting['default_master'] ) )
 					: false;
 
 				echo '<input type="hidden" name="' . esc_attr( $master_option ) . '" value="' . esc_attr( $master_value ? '1' : '0' ) . '" />';
@@ -801,16 +801,16 @@ class ADVAPAFO_Settings {
 		}
 
 		if ( 'settings' === $active_tab ) {
-			$show_separator             = (bool) get_option( 'advapafo_show_separator', true );
-			$conditional_ui_enabled     = (bool) get_option( 'advapafo_conditional_ui_enabled', false );
-			$button_style               = get_option( 'advapafo_button_style', 'black' );
-			$rp_name                    = get_option( 'advapafo_rp_name', '' );
-			$rp_id                      = get_option( 'advapafo_rp_id', '' );
-			$login_challenge_ttl        = absint( get_option( 'advapafo_login_challenge_ttl', 300 ) );
-			$registration_challenge_ttl = absint( get_option( 'advapafo_registration_challenge_ttl', 300 ) );
-			$window                     = absint( get_option( 'advapafo_rate_limit_window', 300 ) );
-			$max_failures               = absint( get_option( 'advapafo_rate_limit_max_failures', 5 ) );
-			$lockout                    = absint( get_option( 'advapafo_rate_limit_lockout', 900 ) );
+			$show_separator             = (bool) advapafo_get_setting( 'show_separator', true );
+			$conditional_ui_enabled     = (bool) advapafo_get_setting( 'conditional_ui_enabled', false );
+			$button_style               = advapafo_get_setting( 'button_style', 'black' );
+			$rp_name                    = advapafo_get_setting( 'rp_name', '' );
+			$rp_id                      = advapafo_get_setting( 'rp_id', '' );
+			$login_challenge_ttl        = absint( advapafo_get_setting( 'login_challenge_ttl', 300 ) );
+			$registration_challenge_ttl = absint( advapafo_get_setting( 'registration_challenge_ttl', 300 ) );
+			$window                     = absint( advapafo_get_setting( 'rate_limit_window', 300 ) );
+			$max_failures               = absint( advapafo_get_setting( 'rate_limit_max_failures', 5 ) );
+			$lockout                    = absint( advapafo_get_setting( 'rate_limit_lockout', 900 ) );
 
 			echo '<input type="hidden" name="advapafo_show_separator" value="' . esc_attr( $show_separator ? '1' : '0' ) . '" />';
 			echo '<input type="hidden" name="advapafo_conditional_ui_enabled" value="' . esc_attr( $conditional_ui_enabled ? '1' : '0' ) . '" />';
@@ -829,12 +829,17 @@ class ADVAPAFO_Settings {
 	 * Render the everyday settings tab.
 	 */
 	private function render_settings_tab() {
-		$enabled           = (bool) get_option( 'advapafo_enabled', true );
-		$show_setup_notice = (bool) get_option( 'advapafo_show_setup_notice', true );
-		$eligible_roles    = (array) get_option( 'advapafo_eligible_roles', array( 'administrator' ) );
-		$max_passkeys      = absint( get_option( 'advapafo_max_passkeys_per_user', 0 ) );
-		$verification      = get_option( 'advapafo_user_verification', 'required' );
-		$roles             = wp_roles()->roles;
+		$enabled                      = (bool) advapafo_get_setting( 'enabled', true );
+		$show_setup_notice            = (bool) advapafo_get_setting( 'show_setup_notice', true );
+		$eligible_roles               = (array) advapafo_get_setting( 'eligible_roles', array( 'administrator' ) );
+		$max_passkeys                 = absint( advapafo_get_setting( 'max_passkeys_per_user', 0 ) );
+		$verification                 = advapafo_get_setting( 'user_verification', 'required' );
+		$roles                        = wp_roles()->roles;
+		$enabled_overridden           = advapafo_is_setting_overridden( 'enabled' );
+		$show_setup_notice_overridden = advapafo_is_setting_overridden( 'show_setup_notice' );
+		$eligible_roles_overridden    = advapafo_is_setting_overridden( 'eligible_roles' );
+		$max_passkeys_overridden      = advapafo_is_setting_overridden( 'max_passkeys_per_user' );
+		$verification_overridden      = advapafo_is_setting_overridden( 'user_verification' );
 		?>
 		<section class="advapafo-section-header">
 			<div>
@@ -846,26 +851,32 @@ class ADVAPAFO_Settings {
 
 		<div class="advapafo-card advapafo-card--setting">
 			<div class="advapafo-setting-copy">
-				<h3><?php esc_html_e( 'Enable passkeys', 'advanced-passkey-login' ); ?></h3>
+				<h3><?php esc_html_e( 'Enable passkeys', 'advanced-passkey-login' ); ?><?php advapafo_render_managed_setting_badge( 'enabled' ); ?></h3>
 				<p><?php esc_html_e( 'Allow eligible users to register and sign in with secure device passkeys.', 'advanced-passkey-login' ); ?></p>
 			</div>
 			<label class="advapafo-switch">
-				<input type="checkbox" name="advapafo_enabled" value="1" <?php checked( $enabled ); ?> />
+				<input type="checkbox" name="advapafo_enabled" value="1" <?php checked( $enabled ); ?> <?php disabled( $enabled_overridden ); ?> />
 				<span class="advapafo-switch__track"><span class="advapafo-switch__thumb"></span></span>
 				<span class="screen-reader-text"><?php esc_html_e( 'Enable passkeys', 'advanced-passkey-login' ); ?></span>
 			</label>
+			<?php if ( $enabled_overridden ) : ?>
+				<input type="hidden" name="advapafo_enabled" value="<?php echo esc_attr( $enabled ? '1' : '0' ); ?>" />
+			<?php endif; ?>
 		</div>
 
 		<div class="advapafo-card advapafo-card--setting">
 			<div class="advapafo-setting-copy">
-				<h3><?php esc_html_e( 'Show setup alert on profile', 'advanced-passkey-login' ); ?></h3>
+				<h3><?php esc_html_e( 'Show setup alert on profile', 'advanced-passkey-login' ); ?><?php advapafo_render_managed_setting_badge( 'show_setup_notice' ); ?></h3>
 				<p><?php esc_html_e( 'Show or hide the admin alert that reminds users to set up a passkey on their profile page.', 'advanced-passkey-login' ); ?></p>
 			</div>
 			<label class="advapafo-switch">
-				<input type="checkbox" name="advapafo_show_setup_notice" value="1" <?php checked( $show_setup_notice ); ?> />
+				<input type="checkbox" name="advapafo_show_setup_notice" value="1" <?php checked( $show_setup_notice ); ?> <?php disabled( $show_setup_notice_overridden ); ?> />
 				<span class="advapafo-switch__track"><span class="advapafo-switch__thumb"></span></span>
 				<span class="screen-reader-text"><?php esc_html_e( 'Show setup alert on profile', 'advanced-passkey-login' ); ?></span>
 			</label>
+			<?php if ( $show_setup_notice_overridden ) : ?>
+				<input type="hidden" name="advapafo_show_setup_notice" value="<?php echo esc_attr( $show_setup_notice ? '1' : '0' ); ?>" />
+			<?php endif; ?>
 		</div>
 
 		<?php
@@ -887,8 +898,9 @@ class ADVAPAFO_Settings {
 							$master_option        = ! empty( $integration_setting['master_option'] ) ? sanitize_key( (string) $integration_setting['master_option'] ) : '';
 							$dependency_active    = ! empty( $integration_setting['dependency_active'] );
 							$default_master       = ! empty( $integration_setting['default_master'] );
-							$saved_master_enabled = $master_option ? (bool) get_option( $master_option, $default_master ) : false;
+							$saved_master_enabled = $master_option ? (bool) advapafo_get_setting( $master_option, $default_master ) : false;
 							$master_enabled       = $dependency_active ? $saved_master_enabled : false;
+							$master_overridden    = $master_option && advapafo_is_setting_overridden( $master_option );
 							?>
 							<article class="advapafo-integration-setting-card<?php echo esc_attr( $dependency_active ? ' is-active' : ' is-missing' ); ?>">
 								<header>
@@ -902,12 +914,15 @@ class ADVAPAFO_Settings {
 									<input type="hidden" name="<?php echo esc_attr( $master_option ); ?>" value="0" />
 								<?php endif; ?>
 								<div class="advapafo-integration-toggle-row">
-									<label><?php esc_html_e( 'Enable module', 'advanced-passkey-login' ); ?></label>
+									<label><?php esc_html_e( 'Enable module', 'advanced-passkey-login' ); ?><?php advapafo_render_managed_setting_badge( $master_option ); ?></label>
 									<label class="advapafo-switch">
-										<input type="checkbox" name="<?php echo esc_attr( $master_option ); ?>" value="1" <?php checked( $master_enabled ); ?> <?php disabled( ! $dependency_active ); ?> />
+										<input type="checkbox" name="<?php echo esc_attr( $master_option ); ?>" value="1" <?php checked( $master_enabled ); ?> <?php disabled( ! $dependency_active || $master_overridden ); ?> />
 										<span class="advapafo-switch__track"><span class="advapafo-switch__thumb"></span></span>
 										<span class="screen-reader-text"><?php esc_html_e( 'Enable integration module', 'advanced-passkey-login' ); ?></span>
 									</label>
+									<?php if ( $master_overridden ) : ?>
+										<input type="hidden" name="<?php echo esc_attr( $master_option ); ?>" value="<?php echo esc_attr( $master_enabled ? '1' : '0' ); ?>" />
+									<?php endif; ?>
 								</div>
 							</article>
 						<?php endforeach; ?>
@@ -921,39 +936,52 @@ class ADVAPAFO_Settings {
 		<div class="advapafo-card">
 			<div class="advapafo-card__header">
 				<div>
-					<h3><?php esc_html_e( 'Eligible user roles', 'advanced-passkey-login' ); ?></h3>
+					<h3><?php esc_html_e( 'Eligible user roles', 'advanced-passkey-login' ); ?><?php advapafo_render_managed_setting_badge( 'eligible_roles' ); ?></h3>
 					<p><?php esc_html_e( 'Choose which WordPress roles can create and use passkeys.', 'advanced-passkey-login' ); ?></p>
 				</div>
 			</div>
 			<div class="advapafo-role-grid">
 				<?php foreach ( $roles as $role_key => $role ) : ?>
 					<label class="advapafo-role-chip">
-						<input type="checkbox" name="advapafo_eligible_roles[]" value="<?php echo esc_attr( $role_key ); ?>" <?php checked( in_array( $role_key, $eligible_roles, true ) ); ?> />
+						<input type="checkbox" name="advapafo_eligible_roles[]" value="<?php echo esc_attr( $role_key ); ?>" <?php checked( in_array( $role_key, $eligible_roles, true ) ); ?> <?php disabled( $eligible_roles_overridden ); ?> />
 						<span><?php echo esc_html( translate_user_role( $role['name'] ) ); ?></span>
 					</label>
 				<?php endforeach; ?>
 			</div>
+			<?php if ( $eligible_roles_overridden ) : ?>
+				<?php foreach ( $eligible_roles as $eligible_role ) : ?>
+					<input type="hidden" name="advapafo_eligible_roles[]" value="<?php echo esc_attr( sanitize_key( $eligible_role ) ); ?>" />
+				<?php endforeach; ?>
+			<?php endif; ?>
 		</div>
 
 		<div class="advapafo-card advapafo-grid-2">
 			<div class="advapafo-field">
 				<div class="advapafo-label-row">
 					<label for="advapafo_max_passkeys_per_user"><?php esc_html_e( 'Passkeys per user', 'advanced-passkey-login' ); ?></label>
+					<?php advapafo_render_managed_setting_badge( 'max_passkeys_per_user' ); ?>
 				</div>
-				<input id="advapafo_max_passkeys_per_user" class="regular-text" type="number" min="0" max="999999" name="advapafo_max_passkeys_per_user" value="<?php echo esc_attr( $max_passkeys ); ?>" />
+				<input id="advapafo_max_passkeys_per_user" class="regular-text" type="number" min="0" max="999999" name="advapafo_max_passkeys_per_user" value="<?php echo esc_attr( $max_passkeys ); ?>" <?php wp_readonly( $max_passkeys_overridden ); ?> />
 				<p><?php esc_html_e( 'Maximum number of passkeys each user can register. Use 0 for no limit.', 'advanced-passkey-login' ); ?></p>
 			</div>
 
 			<div class="advapafo-field">
 				<div class="advapafo-label-row">
 					<label for="advapafo_user_verification"><?php esc_html_e( 'User verification', 'advanced-passkey-login' ); ?></label>
-					<span class="advapafo-badge advapafo-badge--success"><?php esc_html_e( 'Recommended', 'advanced-passkey-login' ); ?></span>
+					<?php if ( $verification_overridden ) : ?>
+						<?php advapafo_render_managed_setting_badge( 'user_verification' ); ?>
+					<?php else : ?>
+						<span class="advapafo-badge advapafo-badge--success"><?php esc_html_e( 'Recommended', 'advanced-passkey-login' ); ?></span>
+					<?php endif; ?>
 				</div>
-				<select id="advapafo_user_verification" name="advapafo_user_verification">
+				<select id="advapafo_user_verification" name="advapafo_user_verification" <?php disabled( $verification_overridden ); ?>>
 					<option value="required" <?php selected( $verification, 'required' ); ?>><?php esc_html_e( 'Required — biometric or device PIN', 'advanced-passkey-login' ); ?></option>
 					<option value="preferred" <?php selected( $verification, 'preferred' ); ?>><?php esc_html_e( 'Preferred — use when available', 'advanced-passkey-login' ); ?></option>
 					<option value="discouraged" <?php selected( $verification, 'discouraged' ); ?>><?php esc_html_e( 'Discouraged — presence only', 'advanced-passkey-login' ); ?></option>
 				</select>
+				<?php if ( $verification_overridden ) : ?>
+					<input type="hidden" name="advapafo_user_verification" value="<?php echo esc_attr( (string) $verification ); ?>" />
+				<?php endif; ?>
 				<p><?php esc_html_e( 'Required verification gives the strongest account protection.', 'advanced-passkey-login' ); ?></p>
 			</div>
 		</div>
@@ -2051,7 +2079,14 @@ class ADVAPAFO_Settings {
 			$resolved = $this->infer_unknown_authenticator_label( $provider, $label );
 		}
 
-		$resolved = (string) apply_filters( 'advapafo_authenticator_provider_label', $resolved, '', '' !== $label ? $label : $provider );
+		$resolved = (string) advapafo_get_setting(
+			'authenticator_provider_label',
+			$resolved,
+			array(
+				'provider' => '',
+				'label'    => '' !== $label ? $label : $provider,
+			)
+		);
 		if ( '' === trim( $resolved ) ) {
 			$resolved = 'Unknown Authenticator';
 		}
@@ -2219,7 +2254,7 @@ class ADVAPAFO_Settings {
 				 *
 				 * @param array<string,string> $aaguid_map Existing AAGUID map.
 				 */
-				$filtered_aaguid_map = (array) apply_filters( 'advapafo_authenticator_aaguid_map', $aaguid_map );
+				$filtered_aaguid_map = (array) advapafo_get_setting( 'authenticator_aaguid_map', $aaguid_map );
 			}
 
 			$aaguid_map = $filtered_aaguid_map;
@@ -2507,19 +2542,29 @@ class ADVAPAFO_Settings {
 	 * Render advanced settings tab.
 	 */
 	private function render_advanced_tab() {
-		$show_separator         = (bool) get_option( 'advapafo_show_separator', true );
-		$conditional_ui_enabled = (bool) get_option( 'advapafo_conditional_ui_enabled', false );
+		$show_separator         = (bool) advapafo_get_setting( 'show_separator', true );
+		$conditional_ui_enabled = (bool) advapafo_get_setting( 'conditional_ui_enabled', false );
 		if ( $conditional_ui_enabled ) {
 			$show_separator = false;
 		}
-		$button_style               = get_option( 'advapafo_button_style', 'black' );
-		$rp_name                    = get_option( 'advapafo_rp_name', '' );
-		$rp_id                      = get_option( 'advapafo_rp_id', '' );
-		$login_challenge_ttl        = absint( get_option( 'advapafo_login_challenge_ttl', 300 ) );
-		$registration_challenge_ttl = absint( get_option( 'advapafo_registration_challenge_ttl', 300 ) );
-		$window                     = absint( get_option( 'advapafo_rate_limit_window', 300 ) );
-		$max_failures               = absint( get_option( 'advapafo_rate_limit_max_failures', 5 ) );
-		$lockout                    = absint( get_option( 'advapafo_rate_limit_lockout', 900 ) );
+		$button_style                          = advapafo_get_setting( 'button_style', 'black' );
+		$rp_name                               = advapafo_get_setting( 'rp_name', '' );
+		$rp_id                                 = advapafo_get_setting( 'rp_id', '' );
+		$login_challenge_ttl                   = absint( advapafo_get_setting( 'login_challenge_ttl', 300 ) );
+		$registration_challenge_ttl            = absint( advapafo_get_setting( 'registration_challenge_ttl', 300 ) );
+		$window                                = absint( advapafo_get_setting( 'rate_limit_window', 300 ) );
+		$max_failures                          = absint( advapafo_get_setting( 'rate_limit_max_failures', 5 ) );
+		$lockout                               = absint( advapafo_get_setting( 'rate_limit_lockout', 900 ) );
+		$show_separator_overridden             = advapafo_is_setting_overridden( 'show_separator' );
+		$conditional_ui_enabled_overridden     = advapafo_is_setting_overridden( 'conditional_ui_enabled' );
+		$button_style_overridden               = advapafo_is_setting_overridden( 'button_style' );
+		$rp_name_overridden                    = advapafo_is_setting_overridden( 'rp_name' );
+		$rp_id_overridden                      = advapafo_is_setting_overridden( 'rp_id' );
+		$login_challenge_ttl_overridden        = advapafo_is_setting_overridden( 'login_challenge_ttl' ) || advapafo_is_setting_overridden( 'challenge_ttl' );
+		$registration_challenge_ttl_overridden = advapafo_is_setting_overridden( 'registration_challenge_ttl' ) || advapafo_is_setting_overridden( 'challenge_ttl' );
+		$window_overridden                     = advapafo_is_setting_overridden( 'rate_limit_window' );
+		$max_failures_overridden               = advapafo_is_setting_overridden( 'rate_limit_max_failures' );
+		$lockout_overridden                    = advapafo_is_setting_overridden( 'rate_limit_lockout' );
 		?>
 		<section class="advapafo-section-header">
 			<div>
@@ -2530,56 +2575,71 @@ class ADVAPAFO_Settings {
 
 		<div class="advapafo-card advapafo-card--setting<?php echo esc_attr( $conditional_ui_enabled ? ' advapafo-card--setting-disabled' : '' ); ?>">
 			<div class="advapafo-setting-copy">
-				<h3><?php esc_html_e( 'Show login OR separator', 'advanced-passkey-login' ); ?></h3>
+				<h3><?php esc_html_e( 'Show login OR separator', 'advanced-passkey-login' ); ?><?php advapafo_render_managed_setting_badge( 'show_separator' ); ?></h3>
 				<p><?php esc_html_e( 'Display the centered OR divider above the passkey button on wp-login.php.', 'advanced-passkey-login' ); ?></p>
 				<?php if ( $conditional_ui_enabled ) : ?>
 					<p><small><?php esc_html_e( 'Disabled while Conditional UI is enabled to keep a single, native autofill login path.', 'advanced-passkey-login' ); ?></small></p>
 				<?php endif; ?>
 			</div>
 			<label class="advapafo-switch">
-				<input type="checkbox" name="advapafo_show_separator" value="1" <?php checked( $show_separator ); ?> <?php disabled( $conditional_ui_enabled ); ?> />
+				<input type="checkbox" name="advapafo_show_separator" value="1" <?php checked( $show_separator ); ?> <?php disabled( $conditional_ui_enabled || $show_separator_overridden ); ?> />
 				<span class="advapafo-switch__track"><span class="advapafo-switch__thumb"></span></span>
 				<span class="screen-reader-text"><?php esc_html_e( 'Show login OR separator', 'advanced-passkey-login' ); ?></span>
 			</label>
-			<?php if ( $conditional_ui_enabled ) : ?>
-				<input type="hidden" name="advapafo_show_separator" value="0" />
+			<?php if ( $conditional_ui_enabled || $show_separator_overridden ) : ?>
+				<input type="hidden" name="advapafo_show_separator" value="<?php echo esc_attr( $show_separator ? '1' : '0' ); ?>" />
 			<?php endif; ?>
 		</div>
 
 		<div class="advapafo-card advapafo-card--setting">
 			<div class="advapafo-setting-copy">
-				<h3><?php esc_html_e( 'Enable passkey autofill (Conditional UI)', 'advanced-passkey-login' ); ?></h3>
+				<h3><?php esc_html_e( 'Enable passkey autofill (Conditional UI)', 'advanced-passkey-login' ); ?><?php advapafo_render_managed_setting_badge( 'conditional_ui_enabled' ); ?></h3>
 				<p><?php esc_html_e( 'When supported by the browser, passkeys appear in the native autofill list when focusing the username field.', 'advanced-passkey-login' ); ?></p>
 				<?php if ( $conditional_ui_enabled ) : ?>
 					<p><small><?php esc_html_e( 'Conditional UI is active, so the manual "Sign in with Passkey" button is hidden on wp-login.php and the OR separator is automatically turned off to avoid duplicate login prompts.', 'advanced-passkey-login' ); ?></small></p>
 				<?php endif; ?>
 			</div>
 			<label class="advapafo-switch">
-				<input type="checkbox" name="advapafo_conditional_ui_enabled" value="1" <?php checked( $conditional_ui_enabled ); ?> />
+				<input type="checkbox" name="advapafo_conditional_ui_enabled" value="1" <?php checked( $conditional_ui_enabled ); ?> <?php disabled( $conditional_ui_enabled_overridden ); ?> />
 				<span class="advapafo-switch__track"><span class="advapafo-switch__thumb"></span></span>
 				<span class="screen-reader-text"><?php esc_html_e( 'Enable passkey autofill (Conditional UI)', 'advanced-passkey-login' ); ?></span>
 			</label>
+			<?php if ( $conditional_ui_enabled_overridden ) : ?>
+				<input type="hidden" name="advapafo_conditional_ui_enabled" value="<?php echo esc_attr( $conditional_ui_enabled ? '1' : '0' ); ?>" />
+			<?php endif; ?>
 		</div>
 
 		<div class="advapafo-card">
 			<div class="advapafo-field">
-				<label for="advapafo_button_style"><?php esc_html_e( 'Passkey button style', 'advanced-passkey-login' ); ?></label>
-				<select id="advapafo_button_style" name="advapafo_button_style">
+				<div class="advapafo-label-row">
+					<label for="advapafo_button_style"><?php esc_html_e( 'Passkey button style', 'advanced-passkey-login' ); ?></label>
+					<?php advapafo_render_managed_setting_badge( 'button_style' ); ?>
+				</div>
+				<select id="advapafo_button_style" name="advapafo_button_style" <?php disabled( $button_style_overridden ); ?>>
 					<option value="black" <?php selected( $button_style, 'black' ); ?>><?php esc_html_e( 'Default black', 'advanced-passkey-login' ); ?></option>
 					<option value="light_grey" <?php selected( $button_style, 'light_grey' ); ?>><?php esc_html_e( 'Light grey', 'advanced-passkey-login' ); ?></option>
 				</select>
+				<?php if ( $button_style_overridden ) : ?>
+					<input type="hidden" name="advapafo_button_style" value="<?php echo esc_attr( (string) $button_style ); ?>" />
+				<?php endif; ?>
 			</div>
 		</div>
 
 		<div class="advapafo-card advapafo-grid-2">
 			<div class="advapafo-field">
-				<label for="advapafo_rp_name"><?php esc_html_e( 'Relying Party Name', 'advanced-passkey-login' ); ?></label>
-				<input id="advapafo_rp_name" class="regular-text" type="text" name="advapafo_rp_name" value="<?php echo esc_attr( $rp_name ); ?>" placeholder="<?php echo esc_attr( get_bloginfo( 'name' ) ); ?>" />
+				<div class="advapafo-label-row">
+					<label for="advapafo_rp_name"><?php esc_html_e( 'Relying Party Name', 'advanced-passkey-login' ); ?></label>
+					<?php advapafo_render_managed_setting_badge( 'rp_name' ); ?>
+				</div>
+				<input id="advapafo_rp_name" class="regular-text" type="text" name="advapafo_rp_name" value="<?php echo esc_attr( $rp_name ); ?>" placeholder="<?php echo esc_attr( get_bloginfo( 'name' ) ); ?>" <?php wp_readonly( $rp_name_overridden ); ?> />
 				<p><?php esc_html_e( 'The name users see in their passkey prompt. Leave blank to use the site name.', 'advanced-passkey-login' ); ?></p>
 			</div>
 			<div class="advapafo-field">
-				<label for="advapafo_rp_id"><?php esc_html_e( 'Relying Party ID', 'advanced-passkey-login' ); ?></label>
-				<input id="advapafo_rp_id" class="regular-text" type="text" name="advapafo_rp_id" value="<?php echo esc_attr( $rp_id ); ?>" placeholder="<?php echo esc_attr( wp_parse_url( home_url(), PHP_URL_HOST ) ); ?>" />
+				<div class="advapafo-label-row">
+					<label for="advapafo_rp_id"><?php esc_html_e( 'Relying Party ID', 'advanced-passkey-login' ); ?></label>
+					<?php advapafo_render_managed_setting_badge( 'rp_id' ); ?>
+				</div>
+				<input id="advapafo_rp_id" class="regular-text" type="text" name="advapafo_rp_id" value="<?php echo esc_attr( $rp_id ); ?>" placeholder="<?php echo esc_attr( wp_parse_url( home_url(), PHP_URL_HOST ) ); ?>" <?php wp_readonly( $rp_id_overridden ); ?> />
 				<p><?php esc_html_e( 'Usually your root domain. Leave blank unless you know you need to customize it.', 'advanced-passkey-login' ); ?></p>
 			</div>
 		</div>
@@ -2594,13 +2654,19 @@ class ADVAPAFO_Settings {
 			</div>
 			<div class="advapafo-grid-2">
 				<div class="advapafo-field">
-					<label for="advapafo_login_challenge_ttl"><?php esc_html_e( 'Login challenge timeout', 'advanced-passkey-login' ); ?></label>
-					<input id="advapafo_login_challenge_ttl" type="number" min="30" max="1200" name="advapafo_login_challenge_ttl" value="<?php echo esc_attr( $login_challenge_ttl ); ?>" />
+					<div class="advapafo-label-row">
+						<label for="advapafo_login_challenge_ttl"><?php esc_html_e( 'Login challenge timeout', 'advanced-passkey-login' ); ?></label>
+						<?php advapafo_render_managed_setting_badge( array( 'login_challenge_ttl', 'challenge_ttl' ) ); ?>
+					</div>
+					<input id="advapafo_login_challenge_ttl" type="number" min="30" max="1200" name="advapafo_login_challenge_ttl" value="<?php echo esc_attr( $login_challenge_ttl ); ?>" <?php wp_readonly( $login_challenge_ttl_overridden ); ?> />
 					<p><?php esc_html_e( 'How long a user has to complete passkey sign-in.', 'advanced-passkey-login' ); ?></p>
 				</div>
 				<div class="advapafo-field">
-					<label for="advapafo_registration_challenge_ttl"><?php esc_html_e( 'Registration challenge timeout', 'advanced-passkey-login' ); ?></label>
-					<input id="advapafo_registration_challenge_ttl" type="number" min="30" max="1200" name="advapafo_registration_challenge_ttl" value="<?php echo esc_attr( $registration_challenge_ttl ); ?>" />
+					<div class="advapafo-label-row">
+						<label for="advapafo_registration_challenge_ttl"><?php esc_html_e( 'Registration challenge timeout', 'advanced-passkey-login' ); ?></label>
+						<?php advapafo_render_managed_setting_badge( array( 'registration_challenge_ttl', 'challenge_ttl' ) ); ?>
+					</div>
+					<input id="advapafo_registration_challenge_ttl" type="number" min="30" max="1200" name="advapafo_registration_challenge_ttl" value="<?php echo esc_attr( $registration_challenge_ttl ); ?>" <?php wp_readonly( $registration_challenge_ttl_overridden ); ?> />
 					<p><?php esc_html_e( 'How long a user has to finish passkey registration.', 'advanced-passkey-login' ); ?></p>
 				</div>
 			</div>
@@ -2616,18 +2682,27 @@ class ADVAPAFO_Settings {
 			</div>
 			<div class="advapafo-grid-3">
 				<div class="advapafo-field">
-					<label for="advapafo_rate_limit_window"><?php esc_html_e( 'Failure window', 'advanced-passkey-login' ); ?></label>
-					<input id="advapafo_rate_limit_window" type="number" min="60" max="3600" name="advapafo_rate_limit_window" value="<?php echo esc_attr( $window ); ?>" />
+					<div class="advapafo-label-row">
+						<label for="advapafo_rate_limit_window"><?php esc_html_e( 'Failure window', 'advanced-passkey-login' ); ?></label>
+						<?php advapafo_render_managed_setting_badge( 'rate_limit_window' ); ?>
+					</div>
+					<input id="advapafo_rate_limit_window" type="number" min="60" max="3600" name="advapafo_rate_limit_window" value="<?php echo esc_attr( $window ); ?>" <?php wp_readonly( $window_overridden ); ?> />
 					<p><?php esc_html_e( 'Seconds.', 'advanced-passkey-login' ); ?></p>
 				</div>
 				<div class="advapafo-field">
-					<label for="advapafo_rate_limit_max_failures"><?php esc_html_e( 'Max failures', 'advanced-passkey-login' ); ?></label>
-					<input id="advapafo_rate_limit_max_failures" type="number" min="1" max="50" name="advapafo_rate_limit_max_failures" value="<?php echo esc_attr( $max_failures ); ?>" />
+					<div class="advapafo-label-row">
+						<label for="advapafo_rate_limit_max_failures"><?php esc_html_e( 'Max failures', 'advanced-passkey-login' ); ?></label>
+						<?php advapafo_render_managed_setting_badge( 'rate_limit_max_failures' ); ?>
+					</div>
+					<input id="advapafo_rate_limit_max_failures" type="number" min="1" max="50" name="advapafo_rate_limit_max_failures" value="<?php echo esc_attr( $max_failures ); ?>" <?php wp_readonly( $max_failures_overridden ); ?> />
 					<p><?php esc_html_e( 'Attempts before lockout.', 'advanced-passkey-login' ); ?></p>
 				</div>
 				<div class="advapafo-field">
-					<label for="advapafo_rate_limit_lockout"><?php esc_html_e( 'Lockout duration', 'advanced-passkey-login' ); ?></label>
-					<input id="advapafo_rate_limit_lockout" type="number" min="60" max="86400" name="advapafo_rate_limit_lockout" value="<?php echo esc_attr( $lockout ); ?>" />
+					<div class="advapafo-label-row">
+						<label for="advapafo_rate_limit_lockout"><?php esc_html_e( 'Lockout duration', 'advanced-passkey-login' ); ?></label>
+						<?php advapafo_render_managed_setting_badge( 'rate_limit_lockout' ); ?>
+					</div>
+					<input id="advapafo_rate_limit_lockout" type="number" min="60" max="86400" name="advapafo_rate_limit_lockout" value="<?php echo esc_attr( $lockout ); ?>" <?php wp_readonly( $lockout_overridden ); ?> />
 					<p><?php esc_html_e( 'Seconds.', 'advanced-passkey-login' ); ?></p>
 				</div>
 			</div>
