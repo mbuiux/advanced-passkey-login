@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Page, type TestInfo } from '@playwright/test';
 
 const ADMIN_USERNAME = process.env.PLAYWRIGHT_ADMIN_USER || 'admin';
 const ADMIN_PASSWORD = process.env.PLAYWRIGHT_ADMIN_PASS || 'admin';
@@ -19,6 +19,23 @@ const STRICT_CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'uns
 
 function annotateRisk(description: string): void {
   test.info().annotations.push({ type: 'risk', description });
+}
+
+function slugify(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 90) || 'screenshot';
+}
+
+async function captureEvidenceScreenshot(page: Page, testInfo: TestInfo, label: string, options: { selector?: string; fullPage?: boolean } = {}): Promise<void> {
+  if (process.env.PLAYWRIGHT_EVIDENCE_SCREENSHOTS !== '1') return;
+  const screenshotPath = testInfo.outputPath(`evidence-${slugify(label)}.png`);
+  try {
+    if (options.selector) {
+      await page.locator(options.selector).first().scrollIntoViewIfNeeded({ timeout: 1_500 }).catch(() => undefined);
+    }
+    await page.screenshot({ path: screenshotPath, fullPage: options.fullPage ?? false, timeout: 5_000 });
+  } catch (error) {
+    testInfo.annotations.push({ type: 'evidence-screenshot-skipped', description: `${label}: ${String(error)}` });
+  }
 }
 
 function isAjaxActionRequest(request: { url(): string; method(): string; postData(): string | null }, action: string): boolean {
@@ -118,7 +135,7 @@ async function triggerBeginLoginAndGetChallenge(page: Page): Promise<string> {
 }
 
 test.describe('advanced-passkey-login wp-login flow', () => {
-  test('CSP compliance: strict CSP does not break passkey script flow with inline execution violations', async ({ page }) => {
+  test('CSP compliance: strict CSP does not break passkey script flow with inline execution violations', async ({ page }, testInfo) => {
     annotateRisk('CSP hardening: plugin scripts must not require unsafe inline execution on wp-login.php');
 
     const cspViolations: string[] = [];
@@ -155,6 +172,9 @@ test.describe('advanced-passkey-login wp-login flow', () => {
 
     const passkeyLoginButton = await firstVisibleLocator(page, SELECTORS.passkeyLoginButton);
     await expect(passkeyLoginButton, 'Passkey login trigger is missing on wp-login.php.').toBeVisible();
+    await captureEvidenceScreenshot(page, testInfo, 'wp-login passkey button under strict CSP', {
+      selector: '#login',
+    });
 
     await passkeyLoginButton.click();
 
@@ -170,7 +190,7 @@ test.describe('advanced-passkey-login wp-login flow', () => {
     ).toEqual([]);
   });
 
-  test('virtual authenticator: register passkey then login successfully', async ({ page, browserName }) => {
+  test('virtual authenticator: register passkey then login successfully', async ({ page, browserName }, testInfo) => {
     annotateRisk('Auth flow regression: passkey register + subsequent passkey sign-in must complete end-to-end');
 
     test.skip(browserName !== 'chromium', 'Virtual WebAuthn authenticator requires Chromium CDP support.');
@@ -197,6 +217,9 @@ test.describe('advanced-passkey-login wp-login flow', () => {
 
     const registerButton = await firstVisibleLocator(page, SELECTORS.passkeyRegisterButton);
     await expect(registerButton, 'Register passkey button is missing on profile page.').toBeVisible();
+    await captureEvidenceScreenshot(page, testInfo, 'profile passkey registration control', {
+      selector: '#advapafo-passkey-register',
+    });
 
     const finishRegistration = page.waitForResponse((response) =>
       isAjaxActionRequest(response.request(), 'advapafo_finish_registration'),
@@ -218,10 +241,11 @@ test.describe('advanced-passkey-login wp-login flow', () => {
     await passkeyLoginButton.click();
 
     await page.waitForURL(/\/wp-admin\//, { timeout: 20_000 });
-    await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
+    await captureEvidenceScreenshot(page, testInfo, 'wp-admin after passkey login');
+    void authenticatorId;
   });
 
-  test('aggressive caching guard: login challenge is unique across isolated contexts', async ({ browser }) => {
+  test('aggressive caching guard: login challenge is unique across isolated contexts', async ({ browser }, testInfo) => {
     annotateRisk('Challenge replay/caching: each isolated context must receive a unique WebAuthn challenge');
 
     const contextOne = await browser.newContext();
@@ -239,13 +263,54 @@ test.describe('advanced-passkey-login wp-login flow', () => {
       expect(challengeUser1, 'User 1 challenge is empty; begin_login payload may be malformed.').not.toEqual('');
       expect(challengeUser2, 'User 2 challenge is empty; begin_login payload may be malformed.').not.toEqual('');
       expect(challengeUser1, 'Challenge reuse detected across isolated contexts (possible caching bug).').not.toEqual(challengeUser2);
+      await captureEvidenceScreenshot(pageOne, testInfo, 'first isolated login challenge', { selector: '#login' });
+      await captureEvidenceScreenshot(pageTwo, testInfo, 'second isolated login challenge', { selector: '#login' });
     } finally {
       await contextOne.close();
       await contextTwo.close();
     }
   });
 
-  test('expired nonce/session timeout: shows user-friendly error and recovers from busy state', async ({ page }) => {
+  test('usernameless unsupported browser error shows friendly recovery message', async ({ page }, testInfo) => {
+    annotateRisk('Usernameless passkey UX: unsupported discoverable credential lookup must not expose raw browser errors');
+
+    await loginAsAdmin(page);
+    await ensureConditionalUiDisabled(page);
+    await logoutFromWordPress(page);
+
+    await page.goto('/wp-login.php');
+
+    await page.evaluate(() => {
+      const originalCredentials = navigator.credentials;
+      Object.defineProperty(navigator, 'credentials', {
+        configurable: true,
+        value: {
+          ...originalCredentials,
+          get: async () => {
+            throw new Error("Resident credentials or empty 'allowCredentials' lists are not supported at this time.");
+          },
+        },
+      });
+    });
+
+    const passkeyLoginButton = await firstVisibleLocator(page, SELECTORS.passkeyLoginButton);
+    await expect(passkeyLoginButton, 'Passkey sign-in button is missing on wp-login.php.').toBeVisible();
+
+    const beginLoginResponse = page.waitForResponse((response) =>
+      isAjaxActionRequest(response.request(), 'advapafo_begin_login'),
+    );
+
+    await passkeyLoginButton.click();
+    await beginLoginResponse;
+
+    const errorNotice = await firstVisibleLocator(page, SELECTORS.loginErrorNotice);
+    await expect(errorNotice, 'Expected a user-facing error notice after unsupported usernameless passkey lookup.').toBeVisible();
+    await expect(errorNotice, 'Raw resident credential browser error should be mapped to friendly recovery wording.').toContainText(/Username-free passkey sign-in is not available.*Enter your username or email/i);
+    await expect(errorNotice, 'Raw WebAuthn implementation terms should not be exposed to users.').not.toContainText(/resident credentials|allowCredentials/i);
+    await captureEvidenceScreenshot(page, testInfo, 'usernameless unsupported friendly recovery', { selector: '#login' });
+  });
+
+  test('expired nonce/session timeout: shows user-friendly error and recovers from busy state', async ({ page }, testInfo) => {
     annotateRisk('Session timeout UX: invalid nonce must fail gracefully without stuck loading state');
 
     await loginAsAdmin(page);
@@ -293,6 +358,7 @@ test.describe('advanced-passkey-login wp-login flow', () => {
 
     const errorNotice = await firstVisibleLocator(page, SELECTORS.loginErrorNotice);
     await expect(errorNotice, 'Expected a user-facing error notice after nonce failure.').toBeVisible();
-    await expect(errorNotice, 'Error notice does not contain expected recovery wording.').toContainText(/invalid|failed|error|expired|try again|resident credentials|allowcredentials/i);
+    await expect(errorNotice, 'Error notice does not contain expected recovery wording.').toContainText(/invalid|failed|error|expired|try again|username-free passkey sign-in|enter your username or email/i);
+    await captureEvidenceScreenshot(page, testInfo, 'nonce failure visible error', { selector: '#login' });
   });
 });

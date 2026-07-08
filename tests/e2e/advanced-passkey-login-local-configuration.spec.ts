@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -11,6 +11,23 @@ const LOCAL_CONFIG_MU_PLUGIN_PREFIX = 'advapafo-local-configuration-e2e';
 const SETTINGS_PAGE_PATH = '/wp-admin/options-general.php?page=advanced-passkey-login';
 const E2E_LOGIN_TOKEN = crypto.randomUUID();
 let fixtureCounter = 0;
+
+function slugify(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 90) || 'screenshot';
+}
+
+async function captureEvidenceScreenshot(page: Page, testInfo: TestInfo, label: string, options: { selector?: string; fullPage?: boolean } = {}): Promise<void> {
+  if (process.env.PLAYWRIGHT_EVIDENCE_SCREENSHOTS !== '1') return;
+  const screenshotPath = testInfo.outputPath(`evidence-${slugify(label)}.png`);
+  try {
+    if (options.selector) {
+      await page.locator(options.selector).first().scrollIntoViewIfNeeded({ timeout: 1_500 }).catch(() => undefined);
+    }
+    await page.screenshot({ path: screenshotPath, fullPage: options.fullPage ?? false, timeout: 5_000 });
+  } catch (error) {
+    testInfo.annotations.push({ type: 'evidence-screenshot-skipped', description: `${label}: ${String(error)}` });
+  }
+}
 
 type FixtureConfig = {
   constantConfiguration?: string;
@@ -231,6 +248,27 @@ async function getSettingProbe(page: Page, setting: string, user = ''): Promise<
   });
 }
 
+async function waitForSettingProbe(page: Page, setting: string, expectedValue: unknown, expectedOverridden?: boolean): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const probe = await getSettingProbe(page, setting);
+        return {
+          value: probe.value,
+          overridden: probe.overridden,
+        };
+      },
+      {
+        message: `${setting} local-configuration fixture should be active before admin UI assertions`,
+        timeout: 15_000,
+      },
+    )
+    .toEqual({
+      value: expectedValue,
+      overridden: expectedOverridden ?? true,
+    });
+}
+
 async function getLoginNonce(page: Page): Promise<string> {
   const data = await getProbe(page, { advapafo_e2e_action: 'login_nonce' });
   expect(typeof data.nonce).toBe('string');
@@ -254,7 +292,7 @@ test.describe('advanced-passkey-login local configuration', () => {
     await removeLocalConfigurationFixture();
   });
 
-  test('filter overrides lock only managed settings and preserve database fallbacks', async ({ page }) => {
+  test('filter overrides lock only managed settings and preserve database fallbacks', async ({ page }, testInfo) => {
     await installLocalConfigurationFixture({
       localConfiguration: `array(
 				'conditional_ui_enabled' => true,
@@ -263,6 +301,9 @@ test.describe('advanced-passkey-login local configuration', () => {
 				'login_challenge_ttl'    => 444,
 			)`,
     });
+
+  await waitForSettingProbe(page, 'conditional_ui_enabled', true);
+  await waitForSettingProbe(page, 'eligible_roles', ['administrator']);
 
     await loginAsAdmin(page);
 
@@ -310,15 +351,20 @@ test.describe('advanced-passkey-login local configuration', () => {
       page.locator(SELECTORS.registrationChallengeTtl).first(),
       'Settings not supplied by the filter should stay editable and fall back to their database/default value.',
     ).toBeEditable();
+    await captureEvidenceScreenshot(page, testInfo, 'filter managed advanced settings', {
+      selector: '.advapafo-card--setting:has-text("Enable passkey autofill")',
+    });
   });
 
-  test('ADVAPAFO_SETTINGS constant overrides lock matching admin controls', async ({ page }) => {
+  test('ADVAPAFO_SETTINGS constant overrides lock matching admin controls', async ({ page }, testInfo) => {
     await installLocalConfigurationFixture({
       constantConfiguration: `array(
 	'max_passkeys_per_user' => 9,
 	'login_challenge_ttl'   => 321,
 )`,
     });
+
+  await waitForSettingProbe(page, 'max_passkeys_per_user', 9);
 
     await loginAsAdmin(page);
     await openSettingsTab(page);
@@ -336,9 +382,12 @@ test.describe('advanced-passkey-login local configuration', () => {
     const loginChallengeTtl = page.locator(SELECTORS.loginChallengeTtl).first();
     await expect(loginChallengeTtl, 'Constant-managed login challenge TTL should render its effective value.').toHaveValue('321');
     await expect(loginChallengeTtl, 'Constant-managed login challenge TTL should be readonly.').toHaveAttribute('readonly', 'readonly');
+    await captureEvidenceScreenshot(page, testInfo, 'constant managed challenge timeout', {
+      selector: '.advapafo-card:has-text("Passkey challenge timeouts")',
+    });
   });
 
-  test('setting evaluation order resolves filter, constant, database, mapped option, then default per key', async ({ page }) => {
+  test('setting evaluation order resolves filter, constant, database, mapped option, then default per key', async ({ page }, testInfo) => {
     await installLocalConfigurationFixture({
       constantConfiguration: `array(
 	'login_challenge_ttl'        => 222,
@@ -371,9 +420,15 @@ test.describe('advanced-passkey-login local configuration', () => {
     await expect((await getSettingProbe(page, 'rate_limit_window')).value).toBe(666);
     await expect((await getSettingProbe(page, 'rate_limit_lockout')).value).toBe('777');
     await expect((await getSettingProbe(page, 'rate_limit_max_failures')).value).toBe(5);
+
+    await loginAsAdmin(page);
+    await openAdvancedSettingsTab(page);
+    await captureEvidenceScreenshot(page, testInfo, 'evaluation order effective advanced values', {
+      selector: '.advapafo-card:has-text("Passkey challenge timeouts")',
+    });
   });
 
-  test('legacy configuration filters still feed through the centralized getter', async ({ page }) => {
+  test('legacy configuration filters still feed through the centralized getter', async ({ page }, testInfo) => {
     await installLocalConfigurationFixture({
       setup: `add_action(
 	'init',
@@ -403,9 +458,12 @@ add_filter( 'advapafo_max_passkeys_per_user', static fn( $value, WP_User $user )
 
     await expect(page.locator(SELECTORS.conditionalToggle).first()).toBeChecked();
     await expect(page.locator(SELECTORS.conditionalToggle).first()).toBeEnabled();
+    await captureEvidenceScreenshot(page, testInfo, 'legacy filter conditional UI enabled', {
+      selector: '.advapafo-card--setting:has-text("Enable passkey autofill")',
+    });
   });
 
-  test('local configuration controls Last used pill label and freshness through the login AJAX endpoint', async ({ page }) => {
+  test('local configuration controls Last used pill label and freshness through the login AJAX endpoint', async ({ page }, testInfo) => {
     await installLocalConfigurationFixture({
       localConfiguration: `array(
 				'last_used_pill_label'          => 'Previously used',
@@ -427,6 +485,12 @@ add_filter( 'advapafo_max_passkeys_per_user', static fn( $value, WP_User $user )
     const freshPayload = await freshResponse.json();
     expect(freshPayload.success).toBe(true);
     expect(freshPayload.data).toMatchObject({ showPill: true, label: 'Previously used' });
+
+    await page.goto('/wp-login.php');
+    await page.locator('#user_login').fill(ADMIN_USERNAME);
+    await expect(page.locator('.advapafo-passkey-last-used-pill').first()).toHaveText('Previously used');
+    await expect(page.locator('.advapafo-passkey-last-used-pill').first()).toBeVisible();
+    await captureEvidenceScreenshot(page, testInfo, 'last used pill custom label', { selector: '#login' });
 
     await seedLastUsed(page, 200);
     const staleResponse = await page.request.post('/wp-admin/admin-ajax.php', {
@@ -474,6 +538,8 @@ add_filter( 'advapafo_max_passkeys_per_user', static fn( $value, WP_User $user )
     expect(blockedResponse.status()).toBe(400);
     const blockedPayload = await blockedResponse.json();
     expect(blockedPayload).toMatchObject({ success: false, data: { message: 'Passkeys require HTTPS.' } });
+    await page.goto(new URL('/wp-login.php', httpOrigin).toString());
+    await captureEvidenceScreenshot(page, testInfo, 'http secure context warning', { selector: '#login' });
 
     await installLocalConfigurationFixture({
       environmentType: 'local',

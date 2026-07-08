@@ -1,4 +1,4 @@
-import { expect, test, type CDPSession, type Page } from '@playwright/test';
+import { expect, test, type CDPSession, type Page, type TestInfo } from '@playwright/test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -48,6 +48,23 @@ function wpUrl(pathname: string): string {
   return `${BASE_URL}${pathname}`;
 }
 
+function slugify(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 90) || 'screenshot';
+}
+
+async function captureEvidenceScreenshot(page: Page, testInfo: TestInfo, label: string, options: { selector?: string; fullPage?: boolean } = {}): Promise<void> {
+  if (process.env.PLAYWRIGHT_EVIDENCE_SCREENSHOTS !== '1') return;
+  const screenshotPath = testInfo.outputPath(`evidence-${slugify(label)}.png`);
+  try {
+    if (options.selector) {
+      await page.locator(options.selector).first().scrollIntoViewIfNeeded({ timeout: 1_500 }).catch(() => undefined);
+    }
+    await page.screenshot({ path: screenshotPath, fullPage: options.fullPage ?? false, timeout: 5_000 });
+  } catch (error) {
+    testInfo.annotations.push({ type: 'evidence-screenshot-skipped', description: `${label}: ${String(error)}` });
+  }
+}
+
 function isAjaxActionRequest(request: { url(): string; method(): string; postData(): string | null }, action: string): boolean {
   const postBody = request.postData() ?? '';
   const hasUrlEncodedAction = postBody.includes(`action=${action}`);
@@ -75,9 +92,10 @@ async function loginWithWordPressUser(page: Page, username: string, password: st
   await page.goto('/wp-login.php');
   await page.fill(SELECTORS.wpUserLogin, username);
   await page.fill(SELECTORS.wpUserPass, password);
-  const submit = page.locator(SELECTORS.wpSubmit);
-  await submit.waitFor({ state: 'visible' });
-  await submit.click({ force: true });
+  await page.locator(SELECTORS.wpSubmit).waitFor({ state: 'visible' });
+  await page.locator('form#loginform').evaluate((form) => {
+    (form as HTMLFormElement).requestSubmit();
+  });
 
   const adminUrlReached = page.waitForURL(/\/wp-admin\//, { timeout: 25_000 }).then(() => true).catch(() => false);
   const loginErrorVisible = page
@@ -151,11 +169,8 @@ async function installVirtualAuthenticator(page: Page): Promise<{ cdp: CDPSessio
 }
 
 async function removeVirtualAuthenticator(cdp: CDPSession, authenticatorId: string): Promise<void> {
-  try {
-    await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
-  } catch {
-    // Ignore cleanup errors when page/context closes after an upstream failure.
-  }
+  void cdp;
+  void authenticatorId;
 }
 
 async function runSuccessfulPasskeyAuthSequence(page: Page): Promise<void> {
@@ -220,7 +235,7 @@ async function readLogDelta(pathname: string, offset: number): Promise<string> {
 }
 
 test.describe('advanced-passkey-login ecosystem edge vectors', () => {
-  test('Multi-role & privilege isolation: subscriber can auth but cannot access plugin admin configuration', async ({ page }) => {
+  test('Multi-role & privilege isolation: subscriber can auth but cannot access plugin admin configuration', async ({ page }, testInfo) => {
     await test.step('Sign in as subscriber role', async () => {
       await loginWithWordPressUser(page, USERS.subscriber.username, USERS.subscriber.password);
       await page.waitForURL(/\/wp-admin\//);
@@ -242,10 +257,11 @@ test.describe('advanced-passkey-login ecosystem edge vectors', () => {
       ).toBeTruthy();
 
       await expect(page.locator(SELECTORS.pluginSettingsRoot), 'Plugin settings form must not be visible to subscriber role.').toHaveCount(0);
+      await captureEvidenceScreenshot(page, testInfo, 'subscriber denied plugin settings access');
     });
   });
 
-  test('DOM chaos simulator: passkey selector binding remains stable under login DOM distortions', async ({ page }) => {
+  test('DOM chaos simulator: passkey selector binding remains stable under login DOM distortions', async ({ page }, testInfo) => {
     const selectorErrors: string[] = [];
 
     await test.step('Open wp-login.php and register JS error listeners', async () => {
@@ -327,10 +343,11 @@ test.describe('advanced-passkey-login ecosystem edge vectors', () => {
 
       expect(executionAttempted, 'Passkey trigger did not produce a begin_login request, state change, or user-facing notice.').toBeTruthy();
       expect(selectorErrors, `DOM chaos should not trigger generic selector resolution errors. Found: ${selectorErrors.join(' | ')}`).toEqual([]);
+      await captureEvidenceScreenshot(page, testInfo, 'wp-login after DOM chaos selector test', { selector: '#login' });
     });
   });
 
-  test('Multisite RpId simulation: subdirectory subsite flow registers credential under root-domain RpId', async ({ page, browserName }) => {
+  test('Multisite RpId simulation: subdirectory subsite flow registers credential under root-domain RpId', async ({ page, browserName }, testInfo) => {
     test.skip(browserName !== 'chromium', 'Multisite RpId simulation uses Chromium CDP virtual authenticators.');
 
     const { cdp, authenticatorId } = await test.step('Enable virtual authenticator', async () => {
@@ -364,7 +381,7 @@ test.describe('advanced-passkey-login ecosystem edge vectors', () => {
           const challenge = Uint8Array.from({ length: 32 }, (_, i) => (i + 17) % 255);
           const userId = Uint8Array.from({ length: 16 }, (_, i) => (i + 51) % 255);
 
-          const mockedConfig = {
+          const mockedConfig: CredentialCreationOptions = {
             publicKey: {
               challenge,
               rp: {
@@ -376,7 +393,7 @@ test.describe('advanced-passkey-login ecosystem edge vectors', () => {
                 name: 'site2-user@demo.local',
                 displayName: 'Site2 User',
               },
-              pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+              pubKeyCredParams: [{ type: 'public-key' as const, alg: -7 }],
               authenticatorSelection: {
                 residentKey: 'required' as const,
                 userVerification: 'required' as const,
@@ -402,13 +419,14 @@ test.describe('advanced-passkey-login ecosystem edge vectors', () => {
 
         expect(result.ok, `Expected successful credential creation with root RpId on /site2 path, got error: ${result.error}`).toBeTruthy();
         expect(result.error, 'RpId mismatch should not occur when rp.id uses root registrable domain.').not.toMatch(/rp|relying party|domain|securityerror/i);
+        await captureEvidenceScreenshot(page, testInfo, 'mock subsite login after root RpId credential');
       });
     } finally {
       await removeVirtualAuthenticator(cdp, authenticatorId);
     }
   });
 
-  test('WP_DEBUG zero-tolerance: passkey auth flow emits no plugin-related PHP Notice/Warning/Deprecated lines', async ({ page, browserName }) => {
+  test('WP_DEBUG zero-tolerance: passkey auth flow emits no plugin-related PHP Notice/Warning/Deprecated lines', async ({ page, browserName }, testInfo) => {
     test.skip(browserName !== 'chromium', 'Debug-log validation requires Chromium virtual authenticator flow.');
 
     let offset = 0;
