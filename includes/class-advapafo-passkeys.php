@@ -566,9 +566,10 @@ class ADVAPAFO_Passkeys {
 				'nonce'         => wp_create_nonce( 'advapafo_login' ),
 				'conditionalUi' => $conditional_ui_enabled,
 				'messages'      => array(
-					'notSupported' => __( 'Passkeys are unavailable here. Use HTTPS (or localhost) in a passkey-capable browser, or sign in with your password.', 'advanced-passkey-login' ),
-					'genericError' => __( 'Passkey sign-in failed. Please try again or use your password.', 'advanced-passkey-login' ),
-					'signingIn'    => __( 'Signing in…', 'advanced-passkey-login' ),
+					'notSupported'            => __( 'Passkeys are unavailable here. Use HTTPS (or localhost) in a passkey-capable browser, or sign in with your password.', 'advanced-passkey-login' ),
+					'genericError'            => __( 'Passkey sign-in failed. Please try again or use your password.', 'advanced-passkey-login' ),
+					'signingIn'               => __( 'Signing in…', 'advanced-passkey-login' ),
+					'usernamelessUnsupported' => __( 'Username-free passkey sign-in is not available with this browser or authenticator. Enter your username or email, then try passkey sign-in again.', 'advanced-passkey-login' ),
 				),
 			)
 		);

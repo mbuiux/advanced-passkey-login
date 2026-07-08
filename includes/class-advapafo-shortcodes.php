@@ -344,13 +344,14 @@ class ADVAPAFO_Shortcodes {
 				'advapafo-login',
 				'ADVAPAFOLogin',
 				array(
-					'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
-					'nonce'    => wp_create_nonce( 'advapafo_login' ),
+					'ajaxUrl'       => admin_url( 'admin-ajax.php' ),
+					'nonce'         => wp_create_nonce( 'advapafo_login' ),
 					'conditionalUi' => class_exists( 'ADVAPAFO_Passkeys' ) && method_exists( 'ADVAPAFO_Passkeys', 'is_conditional_ui_enabled' ) ? ADVAPAFO_Passkeys::is_conditional_ui_enabled() : false,
-					'messages' => array(
-						'notSupported' => __( 'Passkeys are unavailable here. Use HTTPS (or localhost) in a passkey-capable browser, or sign in with your password.', 'advanced-passkey-login' ),
-						'genericError' => __( 'Passkey sign-in failed. Please try again or use your password.', 'advanced-passkey-login' ),
-						'signingIn'    => __( 'Signing in…', 'advanced-passkey-login' ),
+					'messages'      => array(
+						'notSupported'            => __( 'Passkeys are unavailable here. Use HTTPS (or localhost) in a passkey-capable browser, or sign in with your password.', 'advanced-passkey-login' ),
+						'genericError'            => __( 'Passkey sign-in failed. Please try again or use your password.', 'advanced-passkey-login' ),
+						'signingIn'               => __( 'Signing in…', 'advanced-passkey-login' ),
+						'usernamelessUnsupported' => __( 'Username-free passkey sign-in is not available with this browser or authenticator. Enter your username or email, then try passkey sign-in again.', 'advanced-passkey-login' ),
 					),
 				)
 			);

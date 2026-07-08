@@ -229,6 +229,9 @@
 
     function toFriendlyErrorMessage(err) {
         var msg = (err && err.message) ? String(err.message) : '';
+        if (msg && /resident credentials|discoverable credentials|empty ['"]?allowCredentials['"]?|allowCredentials lists are not supported/i.test(msg)) {
+            return ADVAPAFOLogin.messages.usernamelessUnsupported || ADVAPAFOLogin.messages.genericError;
+        }
         if (msg && /did not match the expected pattern/i.test(msg)) {
             return 'Your passkey request data was invalid. Please refresh this page and try again.';
         }
