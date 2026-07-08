@@ -8,103 +8,105 @@ Requires PHP: 8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Secure WordPress with passwordless passkey login using Face ID, Touch ID, Windows Hello, and hardware security keys.
+Add secure passwordless passkey login with Face ID, Touch ID, Windows Hello, and hardware keys.
 
 == Description ==
 
-Passwords are the single biggest security risk for your WordPress site. They get leaked, reused, or broken by automated brute-force attacks. Standard Two-Factor Authentication (2FA) adds safety, but typing in temporary codes from SMS or authenticator apps introduces annoying friction to your daily workflow.
+Passwords are the single biggest security liability for your WordPress site. They get leaked, reused, and exploited by automated brute-force attacks every single day. While standard Two-Factor Authentication (2FA) adds a layer of safety, typing in temporary codes from SMS or authenticator apps introduces annoying workflow friction that hurts user adoption and slows down your day.
 
-**Advanced Passkeys for Secure Login** brings the future of un-phishable, modern authentication directly to your WordPress site using the official FIDO2 / WebAuthn standard. 
+**Advanced Passkeys for Secure Login** brings the future of un-phishable, lightning-fast authentication directly to WordPress using the official FIDO2 / WebAuthn standard.
 
-Users register a passkey just once using their device's built-in biometric sensor (Face ID, Touch ID, Windows Hello) or a hardware security key (like a YubiKey). Future sign-ins take less than a second—completely bypassing the traditional password field.
+Give your users a modern login experience. Users register a secure passkey just once using their device's built-in biometric sensor (Face ID, Touch ID, Windows Hello), device PIN, or a hardware security key (like a YubiKey). Future sign-ins can bypass traditional password fields and reduce credential-theft risk.
 
-=== Why Switch to Passkeys? ===
-* **Immune to Phishing:** Passkeys are cryptographically bound to your specific domain. A fake login page cannot trick or steal a passkey.
-* **Goodbye Brute-Force:** Because there is no static password on the server to guess, automated bot attacks are completely neutralized.
-* **Ultimate Ecosystem Sync:** Works seamlessly with iCloud Keychain, Google Password Manager, and 1Password for painless cross-device access.
+=== Out-of-the-Box WooCommerce & Membership Integrations ===
+Don't settle for basic alternatives that only support the default backend login page. Advanced Passkeys features intelligent, dependency-aware integration modules that automatically inject secure passkey entry points into your existing platform ecosystem. Experience seamless, zero-configuration support for:
+* **WooCommerce** (Secure checkout & customer account login)
+* **MemberPress** & **Paid Memberships Pro (PMPro)** (Frictionless member portal protection)
+* **LearnDash** (Instant student sign-in to prevent account sharing)
+* **Ultimate Member** & **BuddyBoss** (Biometric profiles for modern communities)
+* **Gravity Forms** (Protected frontend user-registration flows)
 
-=== Ecosystem-Wide Integrations Included ===
-Unlike basic alternatives, this plugin features intelligent, dependency-aware integration modules that automatically inject passkey entry points into your favorite plugins. It features out-of-the-box support for **WooCommerce, Easy Digital Downloads, MemberPress, Ultimate Member, LearnDash, BuddyBoss, Gravity Forms, and PMPro**.
+=== Why Smart Site Owners Choose Passkeys ===
+* **Strong Phishing Resistance:** Passkeys are cryptographically bound to your specific domain name. A fake login page or copycat site cannot reuse a passkey issued for your real site.
+* **Reduce Brute-Force Risk:** Passkey login does not rely on a static password being typed into the login form, reducing exposure to automated password-guessing attacks.
+* **Painless Cross-Device Sync:** Works natively with iCloud Keychain, Google Password Manager, and 1Password for reliable, frictionless cross-device access across desktop, mobile, and tablet.
 
 == Features ==
 
-* **One-Click Passwordless Auth:** Adds a native "Sign in with Passkey" button directly to the WordPress login screen.
-* **Conditional UI Autofill:** Optional browser-native passkey autofill prompts on `wp-login.php` when username is focused.
-* **Ecosystem Integrations:** Built-in aware modules, blocks, and shortcodes for WooCommerce, MemberPress, LearnDash, BuddyBoss, and more.
-* **Gutenberg Blocks & Shortcodes:** Automatically registers custom login cards and shortcodes based on active plugins.
-* **Theme Template Overrides:** Override the login button template via `/advanced-passkeys/login/button.php` in your active theme.
-* **Admin Dashboard Overview:** Keep track of credential performance with an Authenticator Overview card and Last Login activity logs.
-* **Granular Role Controls:** Easily configure exactly which user roles are permitted to use passkey authentication (Default: Administrators).
-* **Code-Managed Configuration:** Developers can hardcode passkey settings via PHP for high-velocity agency, multisite, and version-controlled deployments.
-* **Brute-Force Rate Limiting:** Hardened local security with built-in login rate-limiting and automated daily log cleanups.
-* **Multisite Compatible:** Network-aware provisioning instantly configures security settings for newly created network sites.
-* **Clean Performance & Housekeeping:** Lightweight footprint with a clean uninstall routine that leaves zero orphaned tables or options behind.
+* **One-Click Passwordless Authentication:** Adds a native, highly visible "Sign in with Passkey" button directly to your core WordPress login screens.
+* **Conditional UI Autofill Support:** Offers optional browser-native passkey autofill prompts when a user focuses on the username field for an incredibly polished user experience.
+* **Ecosystem-Aware Gutenberg Blocks & Shortcodes:** Automatically registers matching frontend login cards and components specifically tailored to your active third-party plugins.
+* **High-Yield Admin Nudge Notices:** Turn on built-in dashboard reminders that gently guide eligible users to secure their accounts with a passkey without administrator intervention.
+* **Granular Role-Based Security Policies:** Configure exactly which user roles are permitted to use biometric authentication (Default: Administrators-only out of the box).
+* **Developer-Managed Overrides:** Manage passkey settings in PHP using the centralized `advapafo_local_configuration` filter or the `ADVAPAFO_SETTINGS` constant.
+* **Theme Template Customization:** Seamlessly match your active brand by overriding the login button template layout via `/advanced-passkeys/login/button.php` inside your child theme.
+* **Advanced Analytics Dashboard:** Track credential performance over time with a live Authenticator Overview breakdown card and a Last Login audit trail log.
+* **Hardened Brute-Force Rate Limiting:** Enforce strict local connection limits to log and block malicious behavior, backed by automated daily cleanup crons to keep your database lean.
+* **Multisite Network Provisioning:** Network-aware architecture instantly partitions tables dynamically and inherits security guardrails across newly deployed network sites.
+* **Clean Housekeeping Routine:** Implements a strict, responsible uninstall function that leaves behind absolutely zero orphaned database tables or leftover configuration choices.
 
 == Installation ==
 
 = Automatic installation =
 
-1. In your WordPress admin, go to **Plugins > Add New**
-2. Search for **Advanced Passkeys for Secure Login**
-3. Click **Install Now** then **Activate**
-4. Go to **Settings > Advanced Passkeys for Secure Login** and enable passkeys
+1. In your WordPress dashboard, navigate to **Plugins > Add New**.
+2. Search for **Advanced Passkeys for Secure Login**.
+3. Click **Install Now** and then click **Activate**.
+4. Navigate to **Settings > Advanced Passkeys** to fine-tune your security configuration.
 
 = Manual installation =
 
-1. Download the plugin ZIP from WordPress.org
-2. Go to **Plugins > Add New > Upload Plugin** and upload the ZIP
-3. Click **Activate**
-4. Go to **Settings > Advanced Passkeys for Secure Login** and enable passkeys
+1. Download the plugin ZIP archive file from WordPress.org.
+2. In your dashboard, go to **Plugins > Add New > Upload Plugin** and choose the downloaded file.
+3. Click **Activate**.
+4. Navigate to **Settings > Advanced Passkeys** to get started.
 
-= After activation =
+= Quick Start Onboarding Guide =
 
-1. Go to **Settings > Advanced Passkeys for Secure Login** — verify passkeys are enabled and select which roles may use them.
-2. Visit **Users > Your Profile** and register your first passkey.
-3. Sign out and confirm the **Sign in with Passkey** button appears on the login page.
-4. Register a backup passkey on a second device to avoid lockout.
+1. Head to **Settings > Advanced Passkeys** — confirm passkeys are enabled and review your allowed user roles.
+2. Navigate directly to **Users > Your Profile** and register your first passkey.
+3. Sign out of your dashboard to confirm the secure **Sign in with Passkey** button appears below the password form.
+4. *Pro Tip:* Register a secondary backup passkey (such as a mobile device or physical hardware key) to ensure you have a fallback access path.
 
-= Production & Local Environments =
+= Local Development & Staging Environments =
 
-Passkeys require a secure (HTTPS) connection context. The plugin will actively block passkey flows over plain HTTP in production. 
-If you are testing locally without an SSL certificate, you can bypass this restriction by adding the following line to your `wp-config.php` file:
+The official WebAuthn protocol strictly mandates a secure connection context (HTTPS) in production. To protect your site, the plugin blocks live passkey validation over unsecured HTTP web connections.
 
-`define( 'ADVAPAFO_ALLOW_HTTP', true );` (*Never use this in production!*)
+If you are a developer testing locally on a development server environment without a local SSL certificate installed, you can easily bypass this security restriction by defining this helper flag inside your local `wp-config.php` file:
+
+`define( 'ADVAPAFO_ALLOW_HTTP', true );` *(Warning: Never define this configuration constant on a live production environment!)*
 
 == Frequently Asked Questions ==
 
-= Does this replace passwords entirely? =
+= Does this replace standard WordPress passwords entirely? =
 
-No. Passkeys act as a seamless, high-security alternative sign-in method. Users retain their standard WordPress passwords as a reliable fallback.
+No. Passkeys function as a high-security alternative login method. Users retain their standard WordPress password as a fallback authentication method if their passkey device is missing or unavailable.
 
-= Which browsers and devices are supported? =
+= Does this plugin require an active SSL Certificate (HTTPS)? =
 
-Any browser supporting the WebAuthn standard (all major platforms since 2022) including Chrome, Safari, Firefox, and Edge. Supported hardware includes iPhones, iPads, Macs, Android devices, Windows Hello machines, and physical FIDO2/U2F security keys like YubiKeys.
+Yes, in live production environments. Secure biometric authentication requires an encrypted HTTPS context to communicate safely with authenticators. To preview features locally via standard HTTP, please refer to the local development instructions outlined in the Installation section.
 
-= Is HTTPS required? =
+= Can developers manage passkey policies directly in code? =
 
-Yes, in production environments. The official WebAuthn specification mandates a secure context. See the local development instructions in the Installation tab to test locally via HTTP.
+Yes, seamlessly. Agency teams and developers can manage the plugin's complete option array using the centralized `advapafo_local_configuration` filter or the global `ADVAPAFO_SETTINGS` PHP array constant. Setting your policy in code locks the matching WordPress admin dashboard control, displaying a clear **Managed via code** status flag to prevent configuration drift.
 
-= What PHP extensions do I need? =
+= Which major browsers, platforms, and biometric devices are supported? =
 
-The plugin relies on `openssl`, `mbstring`, and `json`. These core extensions are compiled by default on almost every modern managed WordPress host.
+Any operating system and browser that supports modern WebAuthn standards (supported by all primary vendors since 2022). This covers Apple Safari, Google Chrome, Mozilla Firefox, and Microsoft Edge across macOS, iOS, Windows Hello biometrics, Android fingerprint scanners, and physical FIDO2/U2F keys like YubiKeys.
 
-= Can I control which user roles can use passkeys? =
+= Can I restrict passkey creation to specific user roles? =
 
-Yes. Navigate to **Settings > Advanced Passkeys for Secure Login > Eligible Roles**. While it defaults strictly to Administrators, you can provision passkeys for any core or custom role on your site.
+Yes. Navigate to **Settings > Advanced Passkeys > Eligible Roles** to limit access. The plugin defaults to Administrators only, and you can enable passkey access for Subscribers, Customers, or custom membership roles as needed.
 
-= Can developers manage plugin settings in code? =
+= Which dynamic shortcodes are packaged with the plugin? =
 
-Yes. Developers can use the centralized `advapafo_local_configuration` filter or the `ADVAPAFO_SETTINGS` constant to manage settings from PHP. Code-managed settings take priority over database options. When a setting is managed in code, the matching admin field displays **Managed via code** and becomes read-only or disabled.
+**Global Core Shortcodes:**
+* `[advapafo_login_button]` — Renders the standalone passkey login button.
+* `[advapafo_register_button]` — Places a passkey enrollment trigger on any frontend layout.
+* `[advapafo_passkey_profile]` — Displays a full credential management table for logged-in profiles.
+* `[advapafo_passkey_prompt]` — Embeds an interactive onboarding registration area.
 
-= Which shortcodes are available? =
-
-**Core shortcodes:**
-* `[advapafo_login_button]`
-* `[advapafo_register_button]`
-* `[advapafo_passkey_profile]`
-* `[advapafo_passkey_prompt]`
-
-**Integration-specific shortcodes:** (active when corresponding plugins are running)
+**Ecosystem Integration Shortcodes:** (Automatically responsive when companion plugins are active)
 * `[advapafo_woocommerce_login]`
 * `[advapafo_edd_login]`
 * `[advapafo_memberpress_login]`
@@ -114,9 +116,9 @@ Yes. Developers can use the centralized `advapafo_local_configuration` filter or
 * `[advapafo_gravityforms_login]`
 * `[advapafo_pmp_login]`
 
-= Which integration Gutenberg blocks are available? =
+= Which integrated Gutenberg Blocks are available? =
 
-When an integration dependency is active, the plugin registers matching blocks:
+When an ecosystem dependency is active on your site, the plugin registers optimized, native core editor blocks:
 * `advanced-passkey-login/woocommerce-login-card`
 * `advanced-passkey-login/edd-login-card`
 * `advanced-passkey-login/memberpress-login-card`
@@ -126,69 +128,47 @@ When an integration dependency is active, the plugin registers matching blocks:
 * `advanced-passkey-login/gravityforms-login-card`
 * `advanced-passkey-login/pmp-login-card`
 
-= What happens if I deactivate or delete the plugin? =
+= What system PHP extensions must be active on my server hosting? =
 
-Deactivating keeps your data safe. Deleting (uninstalling) triggers a strict housekeeping routine that cleanly drops the `wp_wpk_credentials`, `wp_wpk_rate_limits`, and `wp_wpk_logs` tables alongside all `advapafo_*` options.
+The plugin runs on standard, lightweight modern server components requiring the `openssl`, `mbstring`, and `json` extensions. These packages are pre-compiled and running out of the box on nearly all managed WordPress web hosts.
 
-= Is the plugin multisite compatible? =
+= Is the plugin fully WordPress Multisite network compatible? =
 
-Yes. Database tables partition dynamically per site via `$wpdb->prefix`. Network activation auto-provisions existing sites and seamlessly configures any newly deployed network sites.
+Yes. Database tables partition dynamically across your network using `$wpdb->prefix`. Network activation provisions the plugin tables for existing sites and newly created network sites.
 
-= Can I use a custom RP ID for subdomain setups? =
+= Can I use a custom Relying Party ID (RP ID) for complex subdomain setups? =
 
-Yes. Simply add `define( 'ADVAPAFO_RP_ID', 'example.com' );` directly into your site's `wp-config.php` file.
+Yes. For compatible subdomain setups, declare your root domain within your site's `wp-config.php` file:
+`define( 'ADVAPAFO_RP_ID', 'yourdomain.com' );`
 
-= Can I override the login button template in my theme? =
+= Can I override the passkey login button HTML templates in my theme files? =
 
-Yes. Copy the plugin template file to your active theme override directory:
+Yes. Copy the plugin's internal markup template directly into your theme's active folder structure:
+`/wp-content/themes/your-active-theme/advanced-passkeys/login/button.php`
 
-`/wp-content/themes/your-child-theme/advanced-passkeys/login/button.php`
+= What happens to my database data if I delete the plugin? =
 
-or in a parent theme:
-
-`/wp-content/themes/your-parent-theme/advanced-passkeys/login/button.php`
-
-Minimal override header example:
-
-`<?php`
-`/**`
-` * Advanced Passkeys template override: login button.`
-` * /wp-content/themes/your-child-theme/advanced-passkeys/login/button.php`
-` */`
-`if ( ! defined( 'ABSPATH' ) ) { exit; }`
-
-= What happens when Conditional UI is enabled? =
-
-When enabled in Settings > Advanced:
-
-* Browser-supported passkey autofill can appear on the username field.
-* The manual "Sign in with Passkey" button is hidden on `wp-login.php`.
-* The login OR separator is automatically disabled.
-* Password fallback remains available.
+Deactivating the plugin preserves passkey records and settings. Running the default WordPress delete routine removes the plugin's credential, rate-limit, and log tables alongside matching `advapafo_*` configuration rows.
 
 == Developer Configuration ==
 
-Advanced Passkeys supports code-managed configuration for developers, agencies, and teams that deploy WordPress settings through version control. This is useful when you need the same passkey policy across many sites without relying on manual database option changes.
+Advanced Passkeys supports code-managed configuration for developers, agencies, and infrastructure teams that deploy settings through version control. This helps apply the same passkey policy across many sites without manual option changes.
 
-= Evaluation order =
+= Configuration evaluation priority order =
 
-When the plugin resolves a setting, it uses this order:
+When resolving a configuration key, the plugin respects this strict top-down hierarchy:
 
-1. `advapafo_local_configuration` filter
-2. `ADVAPAFO_SETTINGS` constant
-3. `advapafo_settings` option array
-4. Existing individual `advapafo_*` database option
-5. Plugin default
+1. Centralized `advapafo_local_configuration` hook filter
+2. Global `ADVAPAFO_SETTINGS` array constant definition
+3. Site-level `advapafo_settings` option array map
+4. Single historical legacy `advapafo_*` options
+5. Core plugin out-of-the-box system defaults
 
-Code-managed values are resolved per setting key. If you override only `challenge_ttl`, the remaining settings continue to fall back to the database or plugin defaults.
+Values resolve individually by index key. Overriding a key like `login_challenge_ttl` via code leaves your remaining settings completely manageable via the dashboard UI or database choices.
 
-= Managed admin fields =
+= Example: Enforce HTTPS and restrict passkey enrollment to administrators =
 
-When a setting is provided by `advapafo_local_configuration` or `ADVAPAFO_SETTINGS`, the matching admin control is locked and marked **Managed via code**. This prevents accidental dashboard edits from implying that a database value controls a setting that is actually dictated by PHP.
-
-= Example: force HTTPS and administrator-only passkeys =
-
-Add this to a small functionality plugin or your theme's `functions.php`:
+Drop this configuration array inside your active theme's functions file or a custom functionality plugin:
 
     <?php
     add_filter(
@@ -204,9 +184,9 @@ Add this to a small functionality plugin or your theme's `functions.php`:
         }
     );
 
-= Example: wp-config.php constant =
+= Example: Global array constant configuration within wp-config.php =
 
-For deployments that prefer constants, define an array in `wp-config.php`:
+For automated environments that favor infrastructure-level array maps, define this constant:
 
     define(
         'ADVAPAFO_SETTINGS',
@@ -218,52 +198,15 @@ For deployments that prefer constants, define an array in `wp-config.php`:
         )
     );
 
-= Common configuration keys =
-
-* `enabled` — enable or disable passkey features.
-* `eligible_roles` — array of role slugs allowed to use passkeys.
-* `max_passkeys_per_user` — maximum passkeys per user; `0` means unlimited.
-* `conditional_ui_enabled` — enable browser-native passkey autofill on `wp-login.php`.
-* `show_separator` — show or hide the login OR separator.
-* `challenge_ttl` — shared challenge timeout fallback in seconds.
-* `login_challenge_ttl` — login challenge timeout in seconds.
-* `registration_challenge_ttl` — registration challenge timeout in seconds.
-* `user_verification` — one of `required`, `preferred`, or `discouraged`.
-* `rp_name` — custom relying party name.
-* `rp_id` — custom relying party ID for domain/subdomain setups.
-* `rate_limit_window` — failed-attempt tracking window in seconds.
-* `rate_limit_max_failures` — failures allowed before lockout.
-* `rate_limit_lockout` — lockout duration in seconds.
-* `login_redirect` — fallback redirect URL after passkey login.
-* `last_used_pill_label` — label for the login form's Last used passkey indicator.
-* `last_used_pill_freshness_days` — how long the Last used indicator remains fresh.
-
-= Last used pill example =
-
-    <?php
-    add_filter(
-        'advapafo_local_configuration',
-        static function ( array $configuration ): array {
-            $configuration['last_used_pill_label']          = 'Previously used';
-            $configuration['last_used_pill_freshness_days'] = 120;
-
-            return $configuration;
-        }
-    );
-
-= Legacy filters =
-
-Legacy developer filters such as `advapafo_max_passkeys_per_user`, `advapafo_enable_conditional_ui`, and the Last used pill filters remain supported for backward compatibility. New code should prefer `advapafo_local_configuration` so configuration is centralized and easier to audit.
-
 == Screenshots ==
 
-1. Dashboard tab with security activity metrics, authenticator overview, and last-login insights.
-2. Settings tab with everyday passkey controls, integration module toggles, and eligible role selection.
-3. Advanced tab showing technical configuration for login UX, RP settings, challenge timeouts, and rate limiting.
-4. Shortcodes tab with copy-ready shortcode cards, quick-start guidance, and integration snippets.
-5. User Profile passkey management panel for registering a new passkey and revoking existing credentials.
-6. Core WordPress login form with the "Sign in with Passkey" button below the standard password flow in the default black.
-7. Core WordPress login form with Last used passkey indicator pill for returning users in light gray.
+1. The unified site security dashboard panel tracking passkey performance metrics, active provider charts, and live login logs.
+2. The core configuration settings view showing role management selections, biometric behaviors, and integrated platform switches.
+3. The advanced developer configuration panel exposing parameters for WebAuthn RP IDs, token lifetimes, and security connection locks.
+4. The helper copy dashboard offering copy-ready Gutenberg module paths and complete shortcode templates for clean site layout assembly.
+5. The frontend User Profile responsive administration panel where site users manage, name, and revoke credentials.
+6. The standard core WordPress login layout showing the passkey sign-in button below the password form.
+7. The returning user login state demonstrating the Last used device indicator pill for returning passkey users.
 
 == Changelog ==
 
@@ -336,27 +279,3 @@ Legacy developer filters such as `advapafo_max_passkeys_per_user`, `advapafo_ena
 
 = 1.1.11 =
 Recommended update: improves passkey login guidance, refreshes the sign-in button icon, and fixes admin toggle rendering.
-
-= 1.1.10 =
-Recommended update: adds code-managed configuration, improves conditional UI consistency, legacy authenticator mapping reliability, and registration error clarity.
-
-= 1.1.9 =
-Recommended update: refines admin footer link/rating styles for better settings-page visibility.
-
-= 1.1.8 =
-Recommended update: fixes passkey revocation edge cases and improves authenticator brand detection/reporting reliability.
-
-= 1.1.7 =
-Recommended update: aligns plugin author metadata for WordPress.org listing consistency.
-
-= 1.1.6 =
-Recommended update: ensures WordPress.org visual assets are included in automated deploys.
-
-= 1.1.5 =
-Recommended update: strengthens sanitize/validate/escape protections and improves CI workflow safety checks.
-
-= 1.1.4 =
-Recommended update: adds dashboard visibility, hardens request validation, and improves release packaging quality gates.
-
-= 1.1.2 =
-Recommended update: adds integration module controls, Gutenberg block support, and shortcode UX improvements.
