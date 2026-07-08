@@ -3,7 +3,7 @@ Contributors: wppasskey, mbuiux
 Tags: passkeys, webauthn, passwordless, login, security
 Requires at least: 6.0
 Tested up to: 7.0
-Stable tag: 1.1.10
+Stable tag: 1.1.11
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -267,6 +267,11 @@ Legacy developer filters such as `advapafo_max_passkeys_per_user`, `advapafo_ena
 
 == Changelog ==
 
+= 1.1.11 =
+* Improved: username-free passkey sign-in now shows clearer fallback guidance when a browser or authenticator does not support discoverable credentials.
+* Improved: passkey sign-in button now uses a refreshed user/key icon.
+* Fixed: admin switch checkbox rendering avoids native checkbox bleed-through in custom toggle controls.
+
 = 1.1.10 =
 * Added: code-managed local configuration via `advapafo_local_configuration` and `ADVAPAFO_SETTINGS`.
 * Added: admin UI indicators and locked controls for settings managed by code.
@@ -328,6 +333,9 @@ Legacy developer filters such as `advapafo_max_passkeys_per_user`, `advapafo_ena
 * Initial release.
 
 == Upgrade Notice ==
+
+= 1.1.11 =
+Recommended update: improves passkey login guidance, refreshes the sign-in button icon, and fixes admin toggle rendering.
 
 = 1.1.10 =
 Recommended update: adds code-managed configuration, improves conditional UI consistency, legacy authenticator mapping reliability, and registration error clarity.
