@@ -53,6 +53,7 @@ function advapafo_uninstall_cleanup_current_blog(): void {
 		'advapafo_log_retention_days',
 		'advapafo_rp_name',
 		'advapafo_credentials_schema_v2',
+		'advapafo_quick_setup_dismissed',
 	);
 
 	foreach ( $options as $option ) {

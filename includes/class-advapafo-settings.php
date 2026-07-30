@@ -56,9 +56,40 @@ class ADVAPAFO_Settings {
 		add_action( 'admin_menu', array( $this, 'add_admin_menu' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_action_update', array( $this, 'flag_settings_save' ), 1 );
+		add_action( 'admin_post_advapafo_dismiss_quick_setup', array( $this, 'dismiss_quick_setup' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_filter( 'admin_footer_text', array( $this, 'filter_admin_footer_text' ), 20 );
 		add_filter( 'update_footer', array( $this, 'filter_update_footer' ), 20 );
+	}
+
+	/**
+	 * Determine whether the quick setup sidebar card has been dismissed.
+	 *
+	 * @return bool
+	 */
+	private function is_quick_setup_dismissed() {
+		return '1' === (string) get_option( 'advapafo_quick_setup_dismissed', '0' );
+	}
+
+	/**
+	 * Persist dismissal of the quick setup sidebar card.
+	 */
+	public function dismiss_quick_setup() {
+		check_admin_referer( 'advapafo_dismiss_quick_setup' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have permission to perform this action.', 'advanced-passkey-login' ) );
+		}
+
+		update_option( 'advapafo_quick_setup_dismissed', '1', false );
+
+		$raw_redirect = filter_input( INPUT_POST, 'redirect_to', FILTER_SANITIZE_URL );
+		$redirect_to  = is_string( $raw_redirect ) && '' !== $raw_redirect
+			? wp_validate_redirect( $raw_redirect, admin_url( 'options-general.php?page=' . $this->page_slug ) )
+			: admin_url( 'options-general.php?page=' . $this->page_slug );
+
+		wp_safe_redirect( $redirect_to );
+		exit;
 	}
 
 	/**
@@ -548,7 +579,8 @@ class ADVAPAFO_Settings {
 
 		$active_tab = $this->resolve_active_tab();
 
-		$base_url = admin_url( 'options-general.php?page=' . $this->page_slug );
+		$base_url         = admin_url( 'options-general.php?page=' . $this->page_slug );
+		$show_quick_setup = ! $this->is_quick_setup_dismissed();
 
 		$user_id = get_current_user_id();
 
@@ -671,7 +703,7 @@ class ADVAPAFO_Settings {
 					<?php $this->render_tab_link( $base_url, 'shortcodes', __( 'Shortcodes', 'advanced-passkey-login' ), $active_tab ); ?>
 				</nav>
 
-				<div class="advapafo-layout<?php echo esc_attr( 'dashboard' === $active_tab ? ' advapafo-layout--dashboard' : '' ); ?>">
+				<div class="advapafo-layout<?php echo esc_attr( 'dashboard' === $active_tab ? ' advapafo-layout--dashboard' : ( $show_quick_setup ? '' : ' advapafo-layout--full' ) ); ?>">
 					<main class="advapafo-main-panel">
 						<?php if ( 'dashboard' === $active_tab ) : ?>
 							<?php $this->render_dashboard_tab(); ?>
@@ -690,9 +722,9 @@ class ADVAPAFO_Settings {
 						<?php endif; ?>
 					</main>
 
-					<?php if ( 'dashboard' !== $active_tab ) : ?>
+					<?php if ( 'dashboard' !== $active_tab && $show_quick_setup ) : ?>
 					<aside class="advapafo-sidebar" aria-label="<?php esc_attr_e( 'Advanced Passkeys for Secure Login quick actions', 'advanced-passkey-login' ); ?>">
-						<?php $this->render_sidebar_cards(); ?>
+						<?php $this->render_sidebar_cards( $active_tab ); ?>
 					</aside>
 					<?php endif; ?>
 				</div>
@@ -942,10 +974,15 @@ class ADVAPAFO_Settings {
 			</div>
 			<div class="advapafo-role-grid">
 				<?php foreach ( $roles as $role_key => $role ) : ?>
-					<label class="advapafo-role-chip">
-						<input type="checkbox" name="advapafo_eligible_roles[]" value="<?php echo esc_attr( $role_key ); ?>" <?php checked( in_array( $role_key, $eligible_roles, true ) ); ?> <?php disabled( $eligible_roles_overridden ); ?> />
-						<span><?php echo esc_html( translate_user_role( $role['name'] ) ); ?></span>
-					</label>
+					<?php $role_label = translate_user_role( $role['name'] ); ?>
+					<div class="advapafo-role-chip">
+						<span class="advapafo-role-chip__label"><?php echo esc_html( $role_label ); ?></span>
+						<label class="advapafo-switch">
+							<input type="checkbox" name="advapafo_eligible_roles[]" value="<?php echo esc_attr( $role_key ); ?>" <?php checked( in_array( $role_key, $eligible_roles, true ) ); ?> <?php disabled( $eligible_roles_overridden ); ?> />
+							<span class="advapafo-switch__track"><span class="advapafo-switch__thumb"></span></span>
+							<span class="screen-reader-text"><?php echo esc_html( sprintf( /* translators: %s: WordPress user role name. */ __( 'Allow %s to use passkeys', 'advanced-passkey-login' ), $role_label ) ); ?></span>
+						</label>
+					</div>
 				<?php endforeach; ?>
 			</div>
 			<?php if ( $eligible_roles_overridden ) : ?>
@@ -2833,11 +2870,32 @@ class ADVAPAFO_Settings {
 
 	/**
 	 * Render settings sidebar cards.
+	 *
+	 * @param string $active_tab Currently active tab key.
 	 */
-	private function render_sidebar_cards() {
+	private function render_sidebar_cards( $active_tab ) {
+		$dismiss_redirect = wp_nonce_url(
+			add_query_arg(
+				'tab',
+				sanitize_key( $active_tab ),
+				admin_url( 'options-general.php?page=' . $this->page_slug )
+			),
+			'advapafo_tab_' . sanitize_key( $active_tab ),
+			'advapafo_tab_nonce'
+		);
 		?>
 		<section class="advapafo-side-card">
-			<h2><?php esc_html_e( 'Quick setup', 'advanced-passkey-login' ); ?></h2>
+			<div class="advapafo-side-card__header">
+				<h2><?php esc_html_e( 'Quick setup', 'advanced-passkey-login' ); ?></h2>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+					<input type="hidden" name="action" value="advapafo_dismiss_quick_setup" />
+					<input type="hidden" name="redirect_to" value="<?php echo esc_url( $dismiss_redirect ); ?>" />
+					<?php wp_nonce_field( 'advapafo_dismiss_quick_setup' ); ?>
+					<button type="submit" class="advapafo-icon-button" aria-label="<?php esc_attr_e( 'Dismiss quick setup', 'advanced-passkey-login' ); ?>">
+						<span aria-hidden="true">&times;</span>
+					</button>
+				</form>
+			</div>
 			<ol class="advapafo-checklist">
 				<li><?php esc_html_e( 'Activate the plugin', 'advanced-passkey-login' ); ?></li>
 				<li><?php esc_html_e( 'Enable passkeys in Settings', 'advanced-passkey-login' ); ?></li>
