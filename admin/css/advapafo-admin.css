@@ -1878,3 +1878,80 @@ body.login #advapafo-passkey-login-message {
         margin-right: 16px;
     }
 }
+
+/* Settings autosave toast notifications */
+.advapafo-toast-stack {
+    position: fixed;
+    z-index: 100000;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 360px;
+    pointer-events: none;
+}
+
+.advapafo-toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border-left: 4px solid #4b5563;
+    background: #fff;
+    color: #1d2327;
+    box-shadow: var(--advapafo-shadow-soft);
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.advapafo-toast.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.advapafo-toast__message {
+    flex: 1;
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.4;
+}
+
+.advapafo-toast__close {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    line-height: 1;
+    color: inherit;
+    opacity: 0.6;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.advapafo-toast__close:hover {
+    opacity: 1;
+}
+
+.advapafo-toast--success {
+    border-left-color: #0f9f4b;
+    background: #eefbf3;
+}
+
+.advapafo-toast--error {
+    border-left-color: #d63638;
+    background: #fff0f1;
+}
+
+.advapafo-toast--warning {
+    border-left-color: #dba617;
+    background: #fff9e8;
+}
+
+.advapafo-toast--info {
+    border-left-color: #2271b1;
+    background: #eef6fc;
+}

@@ -17,7 +17,6 @@ const SELECTORS = {
   wpSubmit: '#wp-submit',
   settingsTab: '.advapafo-tabs .advapafo-tab:has-text("Settings")',
   advancedTab: '.advapafo-tabs .advapafo-tab:has-text("Advanced")',
-  saveSettingsButton: '.advapafo-settings-form .advapafo-save-button',
   loginPasskeyButton: '#advapafo-signin-passkey',
   loginSeparator: '.advapafo-login-separator',
 };
@@ -240,21 +239,44 @@ async function openAdvancedTab(page: Page): Promise<void> {
   await expect(page.locator('input[name="advapafo_conditional_ui_enabled"]').first()).toBeVisible();
 }
 
-async function saveSettings(page: Page): Promise<void> {
-  await page.locator(SELECTORS.saveSettingsButton).first().click({ force: true });
-  await page.waitForURL(/options-general\.php\?page=advanced-passkey-login/, { timeout: 15_000 });
-  await expect(page.locator(SELECTORS.saveSettingsButton).first()).toBeVisible();
+async function waitForAutosave(page: Page, trigger: () => Promise<void>): Promise<void> {
+  const responsePromise = page.waitForResponse(
+    (resp) => resp.url().includes('admin-ajax.php') && (resp.request().postData() || '').includes('action=advapafo_autosave_setting'),
+    { timeout: 15_000 },
+  );
+  await trigger();
+  const response = await responsePromise;
+  expect(response.ok(), 'autosave request should return 2xx').toBeTruthy();
+  const payload = (await response.json()) as { success?: boolean };
+  expect(payload.success, `autosave failed: ${JSON.stringify(payload)}`).toBe(true);
 }
 
 async function setCheckbox(page: Page, selector: string, checked: boolean): Promise<void> {
   const checkbox = page.locator(selector).first();
   await expect(checkbox).toHaveCount(1);
   await expect(checkbox, `${selector} should be editable for this settings step`).toBeEnabled();
-  await checkbox.evaluate((node, shouldCheck) => {
-    const input = node as HTMLInputElement;
-    input.checked = Boolean(shouldCheck);
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  }, checked);
+  await waitForAutosave(page, async () => {
+    await checkbox.evaluate((node, shouldCheck) => {
+      const input = node as HTMLInputElement;
+      input.checked = Boolean(shouldCheck);
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, checked);
+  });
+}
+
+async function fillField(page: Page, selector: string, value: string): Promise<void> {
+  const field = page.locator(selector).first();
+  await waitForAutosave(page, async () => {
+    await field.fill(value);
+    await field.blur();
+  });
+}
+
+async function selectField(page: Page, selector: string, value: string): Promise<void> {
+  const field = page.locator(selector).first();
+  await waitForAutosave(page, async () => {
+    await field.selectOption(value);
+  });
 }
 
 async function expectOption(options: OptionsPayload, setting: SettingKey, expected: unknown): Promise<void> {
@@ -309,13 +331,12 @@ test.describe('advanced-passkey-login comprehensive settings audit', () => {
       }
     }
 
-    await page.locator('input[name="advapafo_eligible_roles[]"][value="administrator"]').setChecked(true, { force: true });
-    await page.locator('input[name="advapafo_eligible_roles[]"][value="editor"]').setChecked(true, { force: true });
+    await waitForAutosave(page, () => page.locator('input[name="advapafo_eligible_roles[]"][value="administrator"]').setChecked(true, { force: true }));
+    await waitForAutosave(page, () => page.locator('input[name="advapafo_eligible_roles[]"][value="editor"]').setChecked(true, { force: true }));
     await page.locator('input[name="advapafo_eligible_roles[]"][value="subscriber"]').setChecked(false, { force: true }).catch(() => undefined);
-    await page.locator('input[name="advapafo_max_passkeys_per_user"]').fill('3');
-    await page.locator('select[name="advapafo_user_verification"]').selectOption('preferred');
+    await fillField(page, 'input[name="advapafo_max_passkeys_per_user"]', '3');
+    await selectField(page, 'select[name="advapafo_user_verification"]', 'preferred');
 
-    await saveSettings(page);
     const settingsOptions = (await requestAuditState(page)).options;
 
     await validateSetting('advapafo_enabled', () => expectOption(settingsOptions, 'advapafo_enabled', '1'));
@@ -332,7 +353,6 @@ test.describe('advanced-passkey-login comprehensive settings audit', () => {
 
     await setCheckbox(page, 'input[name="advapafo_show_separator"]', true);
     await setCheckbox(page, 'input[name="advapafo_conditional_ui_enabled"]', true);
-    await saveSettings(page);
 
     const conditionalOptions = (await requestAuditState(page)).options;
     await validateSetting('advapafo_conditional_ui_enabled', () => expectOption(conditionalOptions, 'advapafo_conditional_ui_enabled', '1'));
@@ -347,16 +367,15 @@ test.describe('advanced-passkey-login comprehensive settings audit', () => {
     await openAdvancedTab(page);
 
     await setCheckbox(page, 'input[name="advapafo_conditional_ui_enabled"]', false);
-    await page.locator('select[name="advapafo_button_style"]').selectOption('light_grey');
-    await page.locator('input[name="advapafo_rp_name"]').fill('Demo Passkeys E2E');
-    await page.locator('input[name="advapafo_rp_id"]').fill('Demo.Local!@#');
-    await page.locator('input[name="advapafo_login_challenge_ttl"]').fill('123');
-    await page.locator('input[name="advapafo_registration_challenge_ttl"]').fill('234');
-    await page.locator('input[name="advapafo_rate_limit_window"]').fill('456');
-    await page.locator('input[name="advapafo_rate_limit_max_failures"]').fill('7');
-    await page.locator('input[name="advapafo_rate_limit_lockout"]').fill('890');
+    await selectField(page, 'select[name="advapafo_button_style"]', 'light_grey');
+    await fillField(page, 'input[name="advapafo_rp_name"]', 'Demo Passkeys E2E');
+    await fillField(page, 'input[name="advapafo_rp_id"]', 'Demo.Local!@#');
+    await fillField(page, 'input[name="advapafo_login_challenge_ttl"]', '123');
+    await fillField(page, 'input[name="advapafo_registration_challenge_ttl"]', '234');
+    await fillField(page, 'input[name="advapafo_rate_limit_window"]', '456');
+    await fillField(page, 'input[name="advapafo_rate_limit_max_failures"]', '7');
+    await fillField(page, 'input[name="advapafo_rate_limit_lockout"]', '890');
 
-    await saveSettings(page);
     const advancedOptions = (await requestAuditState(page)).options;
 
     await validateSetting('advapafo_button_style', () => expectOption(advancedOptions, 'advapafo_button_style', 'light_grey'));

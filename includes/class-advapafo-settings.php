@@ -33,31 +33,14 @@ class ADVAPAFO_Settings {
 	private $page_slug = 'advanced-passkey-login';
 
 	/**
-	 * Prefix for per-user notice transients.
-	 *
-	 * @var string
-	 */
-	private $notice_transient_prefix = 'advapafo_settings_notice_';
-
-	/**
-	 * Build per-user transient key for save notices.
-	 *
-	 * @param int $user_id User ID.
-	 * @return string
-	 */
-	private function get_notice_transient_key( $user_id ) {
-		return $this->notice_transient_prefix . absint( $user_id );
-	}
-
-	/**
 	 * Register settings-page hooks.
 	 */
 	public function __construct() {
 		add_action( 'admin_menu', array( $this, 'add_admin_menu' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
-		add_action( 'admin_action_update', array( $this, 'flag_settings_save' ), 1 );
 		add_action( 'admin_post_advapafo_dismiss_quick_setup', array( $this, 'dismiss_quick_setup' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+		add_action( 'wp_ajax_advapafo_autosave_setting', array( $this, 'ajax_autosave_setting' ) );
 		add_filter( 'admin_footer_text', array( $this, 'filter_admin_footer_text' ), 20 );
 		add_filter( 'update_footer', array( $this, 'filter_update_footer' ), 20 );
 	}
@@ -156,93 +139,6 @@ class ADVAPAFO_Settings {
 	}
 
 	/**
-	 * Detect when our settings form is submitted to options.php and store a
-	 * per-user flag BEFORE the redirect happens. Avoids relying on the
-	 * settings-updated URL param or the settings_errors transient, both of
-	 * which can be consumed or missing depending on environment.
-	 */
-	public function flag_settings_save() {
-		if ( ! isset( $_SERVER['REQUEST_METHOD'] ) ) {
-			return;
-		}
-
-		$request_method = sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitized immediately for method check.
-
-		if ( 'POST' !== strtoupper( $request_method ) ) {
-			return;
-		}
-
-		if ( ! current_user_can( 'manage_options' ) ) {
-			return;
-		}
-
-		if ( empty( $_POST['option_page'] ) ) {
-			return;
-		}
-
-		$option_page = sanitize_text_field( wp_unslash( $_POST['option_page'] ) );
-		if ( $this->option_group !== $option_page ) {
-			return;
-		}
-
-		if ( empty( $_POST['_wpnonce'] ) ) {
-			return;
-		}
-
-		$nonce = sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) );
-		if ( ! wp_verify_nonce( $nonce, $option_page . '-options' ) ) {
-			return;
-		}
-
-		$user_id = get_current_user_id();
-		if ( $user_id <= 0 ) {
-			return;
-		}
-
-		$notice = array(
-			'type'    => 'success',
-			'message' => __( 'Settings saved.', 'advanced-passkey-login' ),
-		);
-
-		set_transient( $this->get_notice_transient_key( $user_id ), $notice, 180 );
-	}
-
-	/**
-	 * Retrieve and consume any pending save notice for the user.
-	 *
-	 * @param int $user_id User ID.
-	 * @return array<string, string>|null
-	 */
-	private function consume_save_notice( $user_id ) {
-		if ( $user_id <= 0 ) {
-			return null;
-		}
-
-		$key    = $this->get_notice_transient_key( $user_id );
-		$notice = get_transient( $key );
-
-		if ( false === $notice ) {
-			return null;
-		}
-
-		delete_transient( $key );
-
-		if ( ! is_array( $notice ) || empty( $notice['message'] ) ) {
-			return null;
-		}
-
-		$type = ! empty( $notice['type'] ) ? sanitize_key( $notice['type'] ) : 'success';
-		if ( ! in_array( $type, array( 'success', 'error', 'warning', 'info' ), true ) ) {
-			$type = 'success';
-		}
-
-		return array(
-			'type'    => $type,
-			'message' => wp_kses_post( $notice['message'] ),
-		);
-	}
-
-	/**
 	 * Register the plugin settings page under Settings.
 	 */
 	public function add_admin_menu() {
@@ -288,6 +184,34 @@ class ADVAPAFO_Settings {
 		}
 
 		$active_tab = $this->resolve_active_tab();
+
+		if ( in_array( $active_tab, array( 'settings', 'advanced' ), true ) ) {
+			$autosave_js = plugin_dir_path( __DIR__ ) . 'admin/js/advapafo-settings-autosave.js';
+			if ( file_exists( $autosave_js ) ) {
+				wp_enqueue_script(
+					'advapafo-settings-autosave',
+					ADVAPAFO_PLUGIN_URL . 'admin/js/advapafo-settings-autosave.js',
+					array(),
+					$version,
+					true
+				);
+
+				wp_localize_script(
+					'advapafo-settings-autosave',
+					'ADVAPAFOSettingsAutosave',
+					array(
+						'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
+						'nonce'    => wp_create_nonce( 'advapafo_autosave_setting' ),
+						'messages' => array(
+							'saved'   => __( 'Setting saved.', 'advanced-passkey-login' ),
+							'failed'  => __( 'Setting could not be saved.', 'advanced-passkey-login' ),
+							'network' => __( 'Network error. Please check your connection and try again.', 'advanced-passkey-login' ),
+						),
+					)
+				);
+			}
+		}
+
 		if ( ! in_array( $active_tab, array( 'dashboard', 'audit' ), true ) ) {
 			return;
 		}
@@ -606,96 +530,9 @@ class ADVAPAFO_Settings {
 		$base_url         = admin_url( 'options-general.php?page=' . $this->page_slug );
 		$show_quick_setup = ! $this->is_quick_setup_dismissed();
 
-		$user_id = get_current_user_id();
-
-		$queued_notices = array();
-		$notice_source  = 'none';
-
-		$core_settings_errors = get_settings_errors();
-		foreach ( $core_settings_errors as $notice ) {
-			if ( empty( $notice['message'] ) ) {
-				continue;
-			}
-
-			$type = ! empty( $notice['type'] ) ? sanitize_key( $notice['type'] ) : 'info';
-			if ( 'updated' === $type ) {
-				$type = 'success';
-			}
-			if ( ! in_array( $type, array( 'success', 'error', 'warning', 'info' ), true ) ) {
-				$type = 'info';
-			}
-
-			$queued_notices[] = array(
-				'type'    => $type,
-				'message' => wp_kses_post( $notice['message'] ),
-			);
-		}
-
-		if ( ! empty( $queued_notices ) ) {
-			$notice_source = 'core_settings_errors';
-		}
-
-		$transient_present = false;
-		if ( $user_id > 0 ) {
-			$transient_present = false !== get_transient( $this->get_notice_transient_key( $user_id ) );
-		}
-
-		if ( empty( $queued_notices ) ) {
-			$save_notice = $this->consume_save_notice( $user_id );
-			if ( ! empty( $save_notice ) ) {
-				$queued_notices[] = $save_notice;
-				$notice_source    = 'transient';
-			}
-		}
-
-		$notice_debug      = filter_input( INPUT_GET, 'advapafo_notice_debug', FILTER_SANITIZE_NUMBER_INT );
-		$raw_debug_nonce   = filter_input( INPUT_GET, 'advapafo_notice_debug_nonce', FILTER_SANITIZE_FULL_SPECIAL_CHARS );
-		$debug_nonce_valid = false;
-
-		if ( is_string( $raw_debug_nonce ) && '' !== $raw_debug_nonce ) {
-			$debug_nonce       = sanitize_text_field( $raw_debug_nonce );
-			$debug_nonce_valid = wp_verify_nonce( $debug_nonce, 'advapafo_notice_debug' );
-		}
-
-		$show_debug = current_user_can( 'manage_options' )
-			&& is_string( $notice_debug )
-			&& '1' === $notice_debug
-			&& $debug_nonce_valid;
-
-		$debug_payload = array();
-		if ( $show_debug ) {
-			$request_method_debug = isset( $_SERVER['REQUEST_METHOD'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) : '';
-
-			$debug_payload = array(
-				'method'               => $request_method_debug,
-				'page'                 => $this->page_slug,
-				'tab'                  => $active_tab,
-				'settings_updated_get' => '(not read)',
-				'core_errors_count'    => count( $core_settings_errors ),
-				'transient_present'    => $transient_present ? 'yes' : 'no',
-				'queued_notices_count' => count( $queued_notices ),
-				'notice_source'        => $notice_source,
-				'user_id'              => $user_id,
-			);
-		}
 		?>
 		<div class="wrap advapafo-admin-wrap">
-			<?php if ( $show_debug ) : ?>
-			<div class="advapafo-debug-banner" role="status" aria-live="polite">
-				<strong><?php esc_html_e( 'ADVAPAFO Notice Debug', 'advanced-passkey-login' ); ?></strong>
-				<pre><?php echo esc_html( wp_json_encode( $debug_payload, JSON_PRETTY_PRINT ) ); ?></pre>
-			</div>
-			<?php endif; ?>
-
-			<?php if ( ! empty( $queued_notices ) ) : ?>
-			<div class="advapafo-notices-wrap">
-				<?php foreach ( $queued_notices as $notice ) : ?>
-				<div class="advapafo-flash advapafo-flash--<?php echo esc_attr( $notice['type'] ); ?>" role="alert">
-					<p><?php echo wp_kses_post( $notice['message'] ); ?></p>
-				</div>
-				<?php endforeach; ?>
-			</div>
-			<?php endif; ?>
+			<div id="advapafo-toast-stack" class="advapafo-toast-stack" aria-live="polite"></div>
 
 			<div class="advapafo-premium-shell">
 				<header class="advapafo-hero">
@@ -738,15 +575,12 @@ class ADVAPAFO_Settings {
 						<?php elseif ( 'shortcodes' === $active_tab ) : ?>
 							<?php $this->render_shortcodes_tab(); ?>
 						<?php else : ?>
-							<form method="post" action="options.php" class="advapafo-settings-form">
-								<?php settings_fields( $this->option_group ); ?>
-								<?php $this->render_preserved_hidden_fields( $active_tab ); ?>
+							<div class="advapafo-settings-form">
 								<?php 'advanced' === $active_tab ? $this->render_advanced_tab() : $this->render_settings_tab(); ?>
 								<footer class="advapafo-form-footer">
-									<p><?php esc_html_e( 'Changes apply immediately after saving.', 'advanced-passkey-login' ); ?></p>
-									<?php submit_button( __( 'Save Settings', 'advanced-passkey-login' ), 'primary advapafo-save-button', 'submit', false ); ?>
+									<p><?php esc_html_e( 'Changes save automatically.', 'advanced-passkey-login' ); ?></p>
 								</footer>
-							</form>
+							</div>
 						<?php endif; ?>
 					</main>
 
@@ -819,73 +653,101 @@ class ADVAPAFO_Settings {
 	}
 
 	/**
-	 * Output hidden fields to preserve values from non-active tabs.
+	 * Option names eligible for AJAX autosave, keyed by option name for O(1) lookup.
 	 *
-	 * @param string $active_tab Active tab key.
+	 * Kept in sync manually with register_settings() — every option registered there
+	 * must have a matching entry here or autosave will reject it with a 400.
+	 *
+	 * @return array<string, true>
 	 */
-	private function render_preserved_hidden_fields( $active_tab ) {
-		if ( 'advanced' === $active_tab ) {
-			$enabled              = (bool) advapafo_get_setting( 'enabled', true );
-			$show_setup_notice    = (bool) advapafo_get_setting( 'show_setup_notice', true );
-			$integration_settings = class_exists( 'ADVAPAFO_Integration_Manager' ) && method_exists( 'ADVAPAFO_Integration_Manager', 'get_settings_registry' )
-				? ADVAPAFO_Integration_Manager::get_settings_registry()
-				: array();
-			$roles                = (array) advapafo_get_setting( 'eligible_roles', array( 'administrator' ) );
-			$max_passkeys         = absint( advapafo_get_setting( 'max_passkeys_per_user', 0 ) );
-			$verification         = advapafo_get_setting( 'user_verification', 'required' );
+	private function get_autosave_allowed_options() {
+		return array(
+			'advapafo_enabled'                        => true,
+			'advapafo_show_separator'                 => true,
+			'advapafo_conditional_ui_enabled'         => true,
+			'advapafo_activity_logging_enabled'       => true,
+			'advapafo_show_setup_notice'              => true,
+			'advapafo_enable_woocommerce_support'     => true,
+			'advapafo_enable_edd_support'             => true,
+			'advapafo_enable_memberpress_support'     => true,
+			'advapafo_enable_ultimate_member_support' => true,
+			'advapafo_enable_learndash_support'       => true,
+			'advapafo_enable_buddyboss_support'       => true,
+			'advapafo_enable_gravityforms_support'    => true,
+			'advapafo_enable_pmp_support'             => true,
+			'advapafo_eligible_roles'                 => true,
+			'advapafo_max_passkeys_per_user'          => true,
+			'advapafo_user_verification'              => true,
+			'advapafo_button_style'                   => true,
+			'advapafo_rp_name'                        => true,
+			'advapafo_rp_id'                          => true,
+			'advapafo_login_challenge_ttl'            => true,
+			'advapafo_registration_challenge_ttl'     => true,
+			'advapafo_rate_limit_window'              => true,
+			'advapafo_rate_limit_max_failures'        => true,
+			'advapafo_rate_limit_lockout'             => true,
+		);
+	}
 
-			echo '<input type="hidden" name="advapafo_enabled" value="' . esc_attr( $enabled ? '1' : '0' ) . '" />';
-			echo '<input type="hidden" name="advapafo_show_setup_notice" value="' . esc_attr( $show_setup_notice ? '1' : '0' ) . '" />';
-
-			foreach ( $integration_settings as $integration_setting ) {
-				if ( empty( $integration_setting['master_option'] ) ) {
-					continue;
-				}
-
-				$master_option = sanitize_key( (string) $integration_setting['master_option'] );
-
-				$dependency_active = ! empty( $integration_setting['dependency_active'] );
-				$master_value      = $dependency_active
-					? (bool) advapafo_get_setting( $master_option, ! empty( $integration_setting['default_master'] ) )
-					: false;
-
-				echo '<input type="hidden" name="' . esc_attr( $master_option ) . '" value="' . esc_attr( $master_value ? '1' : '0' ) . '" />';
-			}
-
-			foreach ( $roles as $role ) {
-				echo '<input type="hidden" name="advapafo_eligible_roles[]" value="' . esc_attr( sanitize_key( $role ) ) . '" />';
-			}
-			echo '<input type="hidden" name="advapafo_max_passkeys_per_user" value="' . esc_attr( (string) $max_passkeys ) . '" />';
-			echo '<input type="hidden" name="advapafo_user_verification" value="' . esc_attr( (string) $verification ) . '" />';
-			return;
+	/**
+	 * Handle a single-setting AJAX autosave request.
+	 */
+	public function ajax_autosave_setting() {
+		if ( ! isset( $_SERVER['REQUEST_METHOD'] ) || 'POST' !== strtoupper( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) ) ) {
+			wp_send_json_error( array( 'message' => __( 'Invalid request method.', 'advanced-passkey-login' ) ), 405 );
 		}
 
-		if ( 'settings' === $active_tab ) {
-			$show_separator             = (bool) advapafo_get_setting( 'show_separator', true );
-			$conditional_ui_enabled     = (bool) advapafo_get_setting( 'conditional_ui_enabled', false );
-			$button_style               = advapafo_get_setting( 'button_style', 'black' );
-			$rp_name                    = advapafo_get_setting( 'rp_name', '' );
-			$rp_id                      = advapafo_get_setting( 'rp_id', '' );
-			$login_challenge_ttl        = absint( advapafo_get_setting( 'login_challenge_ttl', 300 ) );
-			$registration_challenge_ttl = absint( advapafo_get_setting( 'registration_challenge_ttl', 300 ) );
-			$window                     = absint( advapafo_get_setting( 'rate_limit_window', 300 ) );
-			$max_failures               = absint( advapafo_get_setting( 'rate_limit_max_failures', 5 ) );
-			$lockout                    = absint( advapafo_get_setting( 'rate_limit_lockout', 900 ) );
-
-			$activity_logging_enabled = (bool) advapafo_get_setting( 'activity_logging_enabled', true );
-
-			echo '<input type="hidden" name="advapafo_show_separator" value="' . esc_attr( $show_separator ? '1' : '0' ) . '" />';
-			echo '<input type="hidden" name="advapafo_conditional_ui_enabled" value="' . esc_attr( $conditional_ui_enabled ? '1' : '0' ) . '" />';
-			echo '<input type="hidden" name="advapafo_activity_logging_enabled" value="' . esc_attr( $activity_logging_enabled ? '1' : '0' ) . '" />';
-			echo '<input type="hidden" name="advapafo_button_style" value="' . esc_attr( (string) $button_style ) . '" />';
-			echo '<input type="hidden" name="advapafo_rp_name" value="' . esc_attr( (string) $rp_name ) . '" />';
-			echo '<input type="hidden" name="advapafo_rp_id" value="' . esc_attr( (string) $rp_id ) . '" />';
-			echo '<input type="hidden" name="advapafo_login_challenge_ttl" value="' . esc_attr( (string) $login_challenge_ttl ) . '" />';
-			echo '<input type="hidden" name="advapafo_registration_challenge_ttl" value="' . esc_attr( (string) $registration_challenge_ttl ) . '" />';
-			echo '<input type="hidden" name="advapafo_rate_limit_window" value="' . esc_attr( (string) $window ) . '" />';
-			echo '<input type="hidden" name="advapafo_rate_limit_max_failures" value="' . esc_attr( (string) $max_failures ) . '" />';
-			echo '<input type="hidden" name="advapafo_rate_limit_lockout" value="' . esc_attr( (string) $lockout ) . '" />';
+		if ( ! check_ajax_referer( 'advapafo_autosave_setting', 'nonce', false ) ) {
+			wp_send_json_error( array( 'message' => __( 'Security check failed. Please refresh the page and try again.', 'advanced-passkey-login' ) ), 403 );
 		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'You do not have permission to change this setting.', 'advanced-passkey-login' ) ), 403 );
+		}
+
+		$option_name = isset( $_POST['option_name'] ) ? sanitize_key( wp_unslash( $_POST['option_name'] ) ) : '';
+		$allowed     = $this->get_autosave_allowed_options();
+
+		if ( '' === $option_name || ! isset( $allowed[ $option_name ] ) ) {
+			wp_send_json_error( array( 'message' => __( 'Unknown setting.', 'advanced-passkey-login' ) ), 400 );
+		}
+
+		if ( advapafo_is_setting_overridden( $option_name ) ) {
+			wp_send_json_error( array( 'message' => __( 'This setting is managed by site configuration and cannot be changed here.', 'advanced-passkey-login' ) ), 409 );
+		}
+
+		if ( isset( $_POST['option_value'] ) && is_array( $_POST['option_value'] ) ) {
+			$raw_value = wp_unslash( $_POST['option_value'] ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitized below via sanitize_option().
+		} else {
+			$raw_value = isset( $_POST['option_value'] ) ? wp_unslash( $_POST['option_value'] ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitized below via sanitize_option().
+		}
+
+		// Reuses the sanitize_callback already registered for this option in register_settings().
+		$sanitized = sanitize_option( $option_name, $raw_value );
+
+		update_option( $option_name, $sanitized );
+
+		// Mirrors sanitize_show_separator()'s force-off rule for the case where only
+		// conditional_ui_enabled is submitted (autosave never posts both fields at once).
+		if ( 'advapafo_conditional_ui_enabled' === $option_name && $sanitized ) {
+			update_option( 'advapafo_show_separator', 0 );
+		}
+
+		if ( get_option( $option_name ) != $sanitized ) { // phpcs:ignore Universal.Operators.StrictComparisons.LooseNotEqual -- intentionally loose; WP options are stored/retrieved as strings for scalars (e.g. int 1 vs "1"), and update_option() returning false for an unchanged value is not itself an error.
+			wp_send_json_error( array( 'message' => __( 'Setting could not be saved.', 'advanced-passkey-login' ) ), 500 );
+		}
+
+		$response = array(
+			'option_name' => $option_name,
+			'value'       => $sanitized,
+			'message'     => __( 'Setting saved.', 'advanced-passkey-login' ),
+		);
+
+		if ( 'advapafo_conditional_ui_enabled' === $option_name ) {
+			$response['show_separator_effective'] = (bool) get_option( 'advapafo_show_separator', true );
+		}
+
+		wp_send_json_success( $response );
 	}
 
 	/**

@@ -3,7 +3,7 @@ Contributors: wppasskey, mbuiux
 Tags: passkeys, webauthn, passwordless, login, security
 Requires at least: 6.0
 Tested up to: 7.1
-Stable tag: 1.1.15
+Stable tag: 1.2.0
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -215,6 +215,10 @@ For automated environments that favor infrastructure-level array maps, define th
 7. The returning user login state demonstrating the Last used device indicator pill for returning passkey users.
 
 == Changelog ==
+
+= 1.2.0 =
+* Added: Settings and Advanced tabs now save automatically — every toggle, dropdown, and field saves instantly in the background with a confirmation toast, so the old "Save Settings" button is no longer needed.
+* Changed: settings changes take effect immediately as you make them instead of waiting for a full-page save.
 
 = 1.1.15 =
 * Fixed: Gutenberg blocks (login button, register button, account passkeys, setup prompt, and all platform integration blocks) can now be selected, moved, and removed in the block editor, and match the look of native blocks.

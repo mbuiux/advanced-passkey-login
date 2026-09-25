@@ -19,7 +19,6 @@ const SELECTORS = {
   passkeyButton: '#advapafo-signin-passkey',
   passkeySeparator: '.advapafo-login-separator',
   advancedTab: '.advapafo-tabs .advapafo-tab:has-text("Advanced")',
-  saveSettingsButton: '.advapafo-settings-form .advapafo-save-button',
   conditionalToggle: 'input[name="advapafo_conditional_ui_enabled"]',
   separatorToggle: 'input[name="advapafo_show_separator"]',
   separatorHiddenInput: 'input[type="hidden"][name="advapafo_show_separator"][value="0"]',
@@ -215,14 +214,17 @@ async function setConditionalUi(page: Page, enabled: boolean): Promise<void> {
 
   const toggle = page.locator(SELECTORS.conditionalToggle).first();
   await expect(toggle).toBeVisible();
+  const responsePromise = page.waitForResponse(
+    (resp) => resp.url().includes('admin-ajax.php') && (resp.request().postData() || '').includes('action=advapafo_autosave_setting'),
+    { timeout: 15_000 },
+  );
   await toggle.evaluate((node, shouldEnable) => {
     const input = node as HTMLInputElement;
     input.checked = Boolean(shouldEnable);
     input.dispatchEvent(new Event('change', { bubbles: true }));
   }, enabled);
 
-  await page.locator(SELECTORS.saveSettingsButton).first().click({ force: true });
-  await page.waitForURL(/options-general\.php\?page=advanced-passkey-login/);
+  await responsePromise;
 }
 
 test.describe('advanced-passkey-login template + conditional ui', () => {

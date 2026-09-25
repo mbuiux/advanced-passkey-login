@@ -9,7 +9,6 @@ const SELECTORS = {
   wpSubmit: '#wp-submit',
   advancedTab: '.advapafo-tabs .advapafo-tab:has-text("Advanced")',
   conditionalToggle: 'input[name="advapafo_conditional_ui_enabled"]',
-  saveSettingsButton: '.advapafo-settings-form .advapafo-save-button',
   passkeyLoginButton: ['#advapafo-signin-passkey', '#passkey-login-btn'],
   passkeyRegisterButton: ['#advapafo-passkey-register', '#register-passkey-btn'],
   loginErrorNotice: ['#advapafo-login-notice', '#advapafo-passkey-login-message', '.passkey-error-notice'],
@@ -94,13 +93,16 @@ async function ensureConditionalUiDisabled(page: Page): Promise<void> {
 
   const toggle = page.locator(SELECTORS.conditionalToggle).first();
   if (await toggle.isChecked()) {
+    const responsePromise = page.waitForResponse(
+      (resp) => resp.url().includes('admin-ajax.php') && (resp.request().postData() || '').includes('action=advapafo_autosave_setting'),
+      { timeout: 15_000 },
+    );
     await toggle.evaluate((node) => {
       const input = node as HTMLInputElement;
       input.checked = false;
       input.dispatchEvent(new Event('change', { bubbles: true }));
     });
-    await page.locator(SELECTORS.saveSettingsButton).first().click({ force: true });
-    await page.waitForURL(/options-general\.php\?page=advanced-passkey-login/);
+    await responsePromise;
   }
 }
 
